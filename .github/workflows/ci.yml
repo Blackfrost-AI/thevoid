@@ -46,9 +46,25 @@ jobs:
           node-version: "20"
           cache: npm
           cache-dependency-path: commandcenter/frontend/package-lock.json
-      - run: npm ci
+      - run: npm ci --no-audit --no-fund
       - run: npm run build
       - run: npm run lint
+
+  dependency-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Trivy dependency scan
+        uses: aquasecurity/trivy-action@v0.36.0
+        env:
+          TRIVY_INCLUDE_DEV_DEPS: "true"
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+          hide-progress: true
 
   secret-scan:
     # Guard against H1-class credential leaks (e.g. service-account keys in tree).
