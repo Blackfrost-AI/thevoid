@@ -35,6 +35,7 @@ session logs, private model weights, or internal research.
 - [Repository map](#repository-map)
 - [Requirements](#requirements)
 - [Installation](#installation)
+- [Private commercial distribution](#private-commercial-distribution)
 - [Command Center](#command-center)
 - [Authorization and rules of engagement](#authorization-and-rules-of-engagement)
 - [CLI reference](#cli-reference)
@@ -133,9 +134,10 @@ project new WarLog, engagement, graph, metrics, integrity, and channel events
 into the interface. Completed engagements and recorded channel evidence remain
 visible after a Command Center restart.
 
-Demo Mode swaps the projection layer to <code>commandcenter/demo_runtime/</code>.
-It does not write to the live Boneyard or WarLog, and the synthetic stores are
-rebuilt deterministically whenever Demo Mode is enabled.
+Demo Mode swaps the projection layer to an isolated directory below the
+operator's XDG state root. It does not write to the live Boneyard or WarLog,
+and the synthetic stores are rebuilt deterministically whenever Demo Mode is
+enabled.
 
 ## Repository map
 
@@ -194,6 +196,28 @@ Missing integrations should be treated as a preflight finding, not bypassed.
 
 ## Installation
 
+### Licensed customer bundle
+
+The supported commercial delivery is one customer-specific archive containing
+the main application package, the Snowblind companion package, and an offline
+signed entitlement:
+
+~~~bash
+tar --extract --zstd --file the-void-<version>-linux-amd64-<token>.tar.zst
+cd the-void-<version>-linux-amd64-<token>
+sudo ./install.sh /path/to/blackfrost-release-signing.pub
+thevoid-command-center start
+~~~
+
+The release key must be downloaded independently and kept outside the extracted
+bundle; the installer refuses any key located inside the bundle as its trust
+anchor. The launcher opens the local browser console. Blackfrost's package
+scripts do not start the application or change firewall/routing policy. Confirm
+the archive SHA-256 and release-key fingerprint against the authenticated
+customer portal first.
+
+### Private source checkout
+
 Create an isolated environment from the repository root:
 
 ~~~bash
@@ -203,11 +227,12 @@ python -m pip install --upgrade pip
 python -m pip install -e '.[dev]'
 ~~~
 
-The editable install exposes two equivalent entry points:
+The editable install exposes the CLI and visual launcher entry points:
 
 ~~~bash
 thevoid version
 void version
+thevoid-command-center --help
 ~~~
 
 Use <code>thevoid</code> in documentation and operator notes for consistency.
@@ -223,15 +248,36 @@ For a runtime-only installation, omit the development extra:
 python -m pip install -e .
 ~~~
 
+## Private commercial distribution
+
+Source stays in the private repository. Release engineering produces two
+native `.deb` packages, SPDX SBOMs, signed checksums, and a single
+customer-specific `tar.zst`. The application packages are generic and signed
+once; the fulfillment worker adds a separately signed offline entitlement for
+each paid order.
+
+Packaging is not source-code secrecy. Python wheels, Debian packages, and
+frozen executables can be inspected. The security boundary is private source
+access, protected signing keys, least-privilege runtime design, verified
+artifacts, entitlement enforcement, and the commercial agreement.
+
+See [Private Commercial Distribution](docs/DISTRIBUTION.md) for the build,
+signing, verification, upgrade, and recovery runbook. The exact implementation
+contract for the existing store, site, and object storage is in
+[Store, Website, and Object-Storage Handoff](docs/STORE_S3_HANDOFF.md).
+
 ## Command Center
 
 ### Production mode
 
 ~~~bash
-python -m commandcenter.backend.main
+thevoid-command-center start
+thevoid-command-center status
+thevoid-command-center stop
 ~~~
 
-The single process serves the API, WebSocket endpoint, and bundled frontend at
+Use `thevoid-command-center foreground` when terminal-attached logs are
+preferred. The single process serves the API, WebSocket endpoint, and bundled frontend at
 [http://127.0.0.1:7070](http://127.0.0.1:7070). Interactive API documentation is
 available at [http://127.0.0.1:7070/api/docs](http://127.0.0.1:7070/api/docs).
 
@@ -279,7 +325,7 @@ npm run lint
 | Prevention | Coverage score and observed control effectiveness |
 | Compliance | Advisory mapping of observed techniques to security frameworks |
 | Drift | Differences recorded across continuity runs |
-| Settings | Runtime health, storage counts, setup guidance, and diagnostics |
+| Settings | Runtime health, signed entitlement, storage counts, setup guidance, and diagnostics |
 
 ### Interaction model
 
@@ -369,6 +415,7 @@ thevoid [--help] [--version] COMMAND [OPTIONS]
 | <code>report</code> | Render current WarLog and Boneyard evidence |
 | <code>continuity start</code> | Run an interval-based authorized validation schedule |
 | <code>continuity drift</code> | Display recorded drift events |
+| <code>license status</code> | Verify the configured offline entitlement without contacting a server |
 
 Safe inspection commands:
 
@@ -450,8 +497,9 @@ full-disk encryption appropriate to the engagement.
 Generate a local report:
 
 ~~~bash
-mkdir -p commandcenter/exports
-thevoid report --format html --output commandcenter/exports/report.html \
+mkdir -p "$HOME/.local/share/blackfrost/the-void/exports"
+thevoid report --format html \
+  --output "$HOME/.local/share/blackfrost/the-void/exports/report.html" \
   --name "Authorized Validation" --operator "Operator" \
   --verify-integrity
 ~~~
@@ -507,7 +555,7 @@ thevoid continuity start <approved-target> \
 
 thevoid continuity drift --list
 thevoid continuity drift --json-output \
-  --output commandcenter/exports/drift.json
+  --output "$HOME/.local/share/blackfrost/the-void/exports/drift.json"
 ~~~
 
 Before starting a scheduler, confirm that the full schedule stays inside the
@@ -526,15 +574,19 @@ settings live in [Frosty/README.md](Frosty/README.md).
 
 Snowblind is bundled so the client test does not depend on a second repository
 or download. It keeps its own documentation, license, acceptable-use terms, and
-<code>snow</code> CLI under <code>snowblind/</code>.
+<code>snowblind</code> CLI (plus the shorter <code>snow</code> alias) under
+<code>snowblind/</code>.
 
 Read [snowblind/README.md](snowblind/README.md) before any privileged operation.
 Begin with the read-only diagnostic and retain independent console access for
 recovery before changing host network policy:
 
 ~~~bash
-cd snowblind
-sudo python3 snow.py doctor
+# Licensed package:
+sudo snowblind doctor
+
+# Private source checkout:
+sudo python3 snowblind/snow.py doctor
 ~~~
 
 ### MCP scanner
@@ -589,8 +641,7 @@ npm run build
 npm run lint
 ~~~
 
-The current 1.1.0 handoff baseline passes 1,105 Python tests. GitHub Actions
-also validates:
+The handoff gate runs the complete Python suite. GitHub Actions also validates:
 
 - Python 3.10 and 3.12 test matrices.
 - Frontend reproducible install, production build, and lint.
@@ -612,7 +663,7 @@ thevoid version
 thevoid status
 thevoid demo --no-animate
 git status --short
-python -m commandcenter.backend.main
+thevoid-command-center start --no-open
 ~~~
 
 Confirm the health endpoint is green and that no customer-specific runtime data
@@ -638,22 +689,23 @@ scope document. Do not improvise an active target during the walkthrough.
 
 ## Runtime data and repository hygiene
 
-Runtime state is local and excluded from Git. Depending on the features used,
-the repository may create:
+Runtime state is local and excluded from Git. Source checkouts and installed
+packages use the same XDG layout by default:
 
 | Path | Contents |
 |---|---|
-| <code>boneyard/</code> | Live evidence SQLite database and journals |
-| <code>warlog/</code> | Live event database, journals, and rotated archives |
-| <code>void.log</code> | Local compatibility log |
-| <code>commandcenter/session_state.db</code> | Local UI/session preferences |
-| <code>commandcenter/exports/</code> | Browser-generated report and WarLog files |
-| <code>commandcenter/demo_runtime/</code> | Isolated synthetic demo stores |
-| <code>results/</code>, <code>reports/</code>, <code>loot/</code>, <code>c2_data/</code> | Optional phase and report output |
+| <code>~/.config/blackfrost/the-void/</code> | Per-operator configuration and optional source entitlement |
+| <code>~/.local/state/blackfrost/the-void/boneyard/</code> | Live evidence SQLite database and journals |
+| <code>~/.local/state/blackfrost/the-void/warlog/</code> | Live event database, journals, and rotated archives |
+| <code>~/.local/state/blackfrost/the-void/logs/</code> | Compatibility and Command Center logs |
+| <code>~/.local/state/blackfrost/the-void/quarantine/</code> | Private injection-defense payload quarantine |
+| <code>~/.local/state/blackfrost/the-void/commandcenter/</code> | UI/session state and isolated demo stores |
+| <code>~/.local/share/blackfrost/the-void/exports/</code> | Browser-generated report and WarLog files |
+| <code>~/.local/share/blackfrost/the-void/loot/</code> | Optional explicitly generated phase output |
 | <code>.shadow/sessions/</code>, <code>.shadow/checkpoints/</code> | Local sessions and checkpoints |
-| <code>snowblind/state/</code> | Snowblind local state |
+| <code>/var/lib/blackfrost/the-void/snowblind/</code> | Privileged Snowblind journal, backups, and recovery state |
 | <code>Frosty/.shadow/</code> | Frosty local session state |
-| <code>archive/</code> | Operator-created local handoff archives |
+| <code>release/out/</code>, <code>release/wheelhouse/</code> | Ignored release outputs and offline dependencies |
 
 Also ignored are environment files other than <code>.env.example</code>, private
 keys and certificates, credential-shaped files, dependency trees, caches,
@@ -688,6 +740,8 @@ working-tree file is not enough.
 | **LIVE** but engagement is **IDLE** | The WebSocket is connected; no validation is currently running |
 | A channel says recorded rather than active | The UI found persisted evidence but has no live adapter injected in this process |
 | Health lists degraded components | Check the server log, virtual environment, optional adapter dependencies, and local store permissions |
+| License gate blocks startup | Run <code>thevoid license status</code>; install the entitlement issued for this version rather than disabling the commercial wrapper |
+| Desktop launcher exits during startup | Inspect <code>~/.local/state/blackfrost/the-void/logs/command-center.log</code> and run <code>thevoid-command-center foreground</code> |
 | Mutation or WebSocket receives 403 | Open the UI through its documented loopback URL; cross-origin browser requests are rejected |
 | Browser shows stale assets after rebuild | Stop the server, restart it, and perform a hard refresh |
 | Vite reports an unsupported Node engine | Upgrade to Node 20.19+ or 22.12+ |
@@ -703,6 +757,8 @@ problem.
 
 - [Client testing guide](CLIENT_TESTING.md)
 - [Operator guide](docs/OPERATOR_GUIDE.md)
+- [Private distribution guide](docs/DISTRIBUTION.md)
+- [Store/S3 implementation handoff](docs/STORE_S3_HANDOFF.md)
 - [Command Center guide](commandcenter/README.md)
 - [Frosty guide](Frosty/README.md)
 - [Snowblind guide](snowblind/README.md)

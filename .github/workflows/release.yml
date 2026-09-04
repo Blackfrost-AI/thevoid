@@ -1,0 +1,161 @@
+# Manual commercial release candidate for a protected self-hosted Kali runner.
+# This intentionally stops at a verified private workflow artifact. The store
+# and object-storage integration is specified in docs/STORE_S3_HANDOFF.md.
+
+name: commercial-release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version matching config.defaults.AGENT_VERSION
+        required: true
+        default: "1.1.0"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: commercial-release-${{ inputs.version }}
+  cancel-in-progress: false
+
+jobs:
+  kali-amd64:
+    environment: commercial-release
+    runs-on: [self-hosted, linux, x64, kali, release]
+    timeout-minutes: 90
+    steps:
+      # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Confirm protected Kali builder
+        shell: bash
+        run: |
+          set -euo pipefail
+          . /etc/os-release
+          test "${ID:-}" = kali
+          test "$(dpkg --print-architecture)" = amd64
+          test -z "$(git status --porcelain --untracked-files=normal)"
+
+      - name: Create isolated build environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m venv "$RUNNER_TEMP/the-void-release-venv"
+          "$RUNNER_TEMP/the-void-release-venv/bin/python" -m pip install --upgrade pip
+          "$RUNNER_TEMP/the-void-release-venv/bin/python" -m pip install -e '.[dev]'
+
+      - name: Validate Python and browser application
+        shell: bash
+        run: |
+          set -euo pipefail
+          PY="$RUNNER_TEMP/the-void-release-venv/bin/python"
+          "$PY" -m pytest tests commandcenter/tests/backend -q --timeout=600
+          npm --prefix commandcenter/frontend ci --no-audit --no-fund
+          npm --prefix commandcenter/frontend run build
+          npm --prefix commandcenter/frontend run lint
+          git diff --exit-code -- commandcenter/frontend/dist
+
+      - name: Prepare offline wheelhouse
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$RUNNER_TEMP/the-void-release-venv/bin/python" \
+            -m release.prepare_wheelhouse --output "$RUNNER_TEMP/wheelhouse"
+
+      - name: Materialize protected signing inputs
+        shell: bash
+        env:
+          LICENSE_PUBLIC_KEY_B64: ${{ secrets.VOID_LICENSE_PUBLIC_KEY_B64 }}
+          RELEASE_PUBLIC_KEY_B64: ${{ secrets.VOID_RELEASE_SIGNING_PUBLIC_KEY_B64 }}
+          RELEASE_PRIVATE_KEY_B64: ${{ secrets.VOID_RELEASE_SIGNING_PRIVATE_KEY_B64 }}
+        run: |
+          set -euo pipefail
+          umask 077
+          test -n "$LICENSE_PUBLIC_KEY_B64"
+          test -n "$RELEASE_PUBLIC_KEY_B64"
+          test -n "$RELEASE_PRIVATE_KEY_B64"
+          printf '%s' "$LICENSE_PUBLIC_KEY_B64" | base64 --decode > "$RUNNER_TEMP/license-public.pem"
+          printf '%s' "$RELEASE_PUBLIC_KEY_B64" | base64 --decode > "$RUNNER_TEMP/release-signing.pub"
+          printf '%s' "$RELEASE_PRIVATE_KEY_B64" | base64 --decode > "$RUNNER_TEMP/release-signing.key"
+          chmod 0600 "$RUNNER_TEMP/release-signing.key"
+
+      - name: Build and sign generic release
+        shell: bash
+        env:
+          VOID_RELEASE_SIGNING_KEY_PASSWORD: ${{ secrets.VOID_RELEASE_SIGNING_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test -n "$VOID_RELEASE_SIGNING_KEY_PASSWORD"
+          "$RUNNER_TEMP/the-void-release-venv/bin/python" -m release.build_release \
+            --version "${{ inputs.version }}" \
+            --wheelhouse "$RUNNER_TEMP/wheelhouse" \
+            --output "$RUNNER_TEMP/release-out" \
+            --license-public-key "$RUNNER_TEMP/license-public.pem" \
+            --release-signing-key "$RUNNER_TEMP/release-signing.key" \
+            --release-public-key "$RUNNER_TEMP/release-signing.pub" \
+            --skip-frontend
+
+      - name: Verify signed payload with external key
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$RUNNER_TEMP/the-void-release-venv/bin/python" -m release.verify_release \
+            "$RUNNER_TEMP/release-out/the-void-${{ inputs.version }}-amd64" \
+            --release-public-key "$RUNNER_TEMP/release-signing.pub"
+
+      - name: Scan release payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          RELEASE_DIR="$RUNNER_TEMP/release-out/the-void-${{ inputs.version }}-amd64"
+          gitleaks dir "$RELEASE_DIR" --no-banner --redact
+          trivy fs "$RELEASE_DIR" \
+            --scanners secret --exit-code 1 --no-progress --disable-telemetry
+          trivy sbom "$RELEASE_DIR/SBOM.core.spdx.json" \
+            --scanners vuln --severity HIGH,CRITICAL --exit-code 1 \
+            --no-progress --disable-telemetry
+          trivy sbom "$RELEASE_DIR/SBOM.snowblind.spdx.json" \
+            --scanners vuln --severity HIGH,CRITICAL --exit-code 1 \
+            --no-progress --disable-telemetry
+
+      - name: Pack verified release for permission-safe transfer
+        shell: bash
+        run: |
+          set -euo pipefail
+          SOURCE_DATE_EPOCH="$(git show -s --format=%ct HEAD)"
+          export SOURCE_DATE_EPOCH ZSTD_CLEVEL=19
+          tar --create --zstd \
+            --file "$RUNNER_TEMP/the-void-${{ inputs.version }}-kali-amd64.generic.tar.zst" \
+            --sort=name \
+            --mtime="@$SOURCE_DATE_EPOCH" \
+            --owner=0 --group=0 --numeric-owner \
+            --directory "$RUNNER_TEMP/release-out" \
+            "the-void-${{ inputs.version }}-amd64"
+
+      - name: Upload private workflow artifact
+        # v7.0.1
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: the-void-${{ inputs.version }}-kali-amd64
+          path: ${{ runner.temp }}/the-void-${{ inputs.version }}-kali-amd64.generic.tar.zst
+          archive: false
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Remove release signing key
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          KEY="$RUNNER_TEMP/release-signing.key"
+          if [ -f "$KEY" ]; then
+            if command -v shred >/dev/null 2>&1; then
+              shred --force --iterations=2 --zero --remove "$KEY"
+            else
+              rm -f -- "$KEY"
+            fi
+          fi

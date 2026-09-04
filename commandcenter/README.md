@@ -16,7 +16,7 @@ cd commandcenter
 # Production (single process)
 ./scripts/build.sh
 cd ..
-PYTHONPATH=. python -m commandcenter.backend.main
+thevoid-command-center start
 # → http://127.0.0.1:7070
 ```
 
@@ -70,6 +70,7 @@ python -m pytest commandcenter/tests/backend/ -v
 | Browser boundary | Loopback Host allowlist plus Origin checks on mutations and WebSockets |
 | Browser hardening | CSP, frame denial, no-referrer, MIME sniffing, and permissions headers |
 | No telemetry | No outbound analytics or hosted service dependency |
+| Offline entitlement | Commercial startup verifies a signed local license; status is visible in Settings |
 | No secrets in browser | Response sanitizer strips credentials / HMACs |
 | Write path | Report/export only; no attack initiation |
 
@@ -77,6 +78,27 @@ This release visualizes, investigates, and exports validation evidence. It
 does not launch validation jobs; a future visual runner needs an explicit
 scope, authorization, approval, and cancellation workflow before it replaces
 that remaining operator path.
+
+## Process lifecycle and local files
+
+```bash
+thevoid-command-center start       # background + open browser
+thevoid-command-center start --no-open
+thevoid-command-center status
+thevoid-command-center open
+thevoid-command-center stop
+thevoid-command-center foreground  # terminal-attached troubleshooting
+```
+
+The background launcher records a mode-0600 PID file below the operator's XDG
+runtime directory and writes logs below
+`~/.local/state/blackfrost/the-void/logs/`. It refuses to run as root and never
+signals a PID unless `/proc` confirms the process belongs to the current user
+and is the expected backend.
+
+Mutable stores, exports, UI preferences, and Demo Mode data also live outside
+the source/install tree in XDG state/data locations. See the root README for
+the complete layout.
 
 ## Stack
 

@@ -1,6 +1,8 @@
 """Default configuration for THE VOID."""
 
-import os
+from pathlib import Path
+
+from config.paths import get_runtime_paths
 
 # ─── Agent Identity ───
 AGENT_NAME = "Frosty"
@@ -45,11 +47,12 @@ HIGH_RISK_PHASES = [
 ]
 
 # ─── Paths ───
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-BONEYARD_DIR = os.path.join(BASE_DIR, "boneyard")
-WARLOG_DIR = os.path.join(BASE_DIR, "warlog")
-LOOT_DIR = os.path.join(BASE_DIR, "loot")
-C2_DIR = os.path.join(BASE_DIR, "c2_data")
+_RUNTIME_PATHS = get_runtime_paths()
+BASE_DIR = str(Path(__file__).resolve().parents[1])
+BONEYARD_DIR = str(_RUNTIME_PATHS.boneyard)
+WARLOG_DIR = str(_RUNTIME_PATHS.warlog)
+LOOT_DIR = str(_RUNTIME_PATHS.loot)
+C2_DIR = str(_RUNTIME_PATHS.c2)
 TOR_SOCKS_PROXY = "socks5h://127.0.0.1:9050"
 
 # ─── Network ───
@@ -112,4 +115,4 @@ HTTP_PROXY = "http://127.0.0.1:8080"
 # ─── Logging ───
 LOG_LEVEL = "INFO"
 LOG_FORMAT = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
-LOG_FILE = os.path.join(BASE_DIR, "void.log")
+LOG_FILE = str(_RUNTIME_PATHS.logs / "void.log")

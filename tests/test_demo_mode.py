@@ -42,9 +42,7 @@ def isolated_env(tmp_path, monkeypatch):
     monkeypatch.setattr(defaults, "WARLOG_DIR", str(live_dir / "warlog"), raising=False)
 
     demo_dir = tmp_path / "demo_runtime"
-    monkeypatch.setattr(
-        "commandcenter.backend.config.Settings.demo_dir", demo_dir
-    )
+    monkeypatch.setenv("VOID_CC_DEMO_DIR", str(demo_dir))
 
     import commandcenter.backend.services.bridge as bridge_mod
     import commandcenter.backend.services.coverage_bridge as cb_mod
@@ -258,7 +256,7 @@ def test_demo_router_endpoints():
         client = TestClient(app, base_url="http://127.0.0.1:7070")
         r = client.get("/api/demo")
         assert r.status_code == 200
-        assert r.json()["demo_mode"] is False
+        assert r.json().get("demo_mode") is False, r.json()
 
         r = client.post("/api/demo/enable")
         assert r.status_code == 200

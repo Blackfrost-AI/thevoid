@@ -3,7 +3,7 @@
 This repository is a clean testing baseline. It contains no prior customer
 records or historical assessment results.
 
-## 1. Prepare
+## 1. Prepare a private source checkout
 
 ```bash
 python3 -m venv .venv
@@ -19,6 +19,7 @@ thevoid version
 void version
 thevoid scenarios list
 void demo --no-animate
+thevoid license status
 ```
 
 ## 2. Verify the baseline
@@ -36,7 +37,7 @@ npm ci
 npm run build
 npm run lint
 cd ../..
-python -m commandcenter.backend.main
+thevoid-command-center start --no-open
 ```
 
 Open `http://127.0.0.1:7070`, enable Demo Mode, and confirm that Operations,
@@ -58,10 +59,64 @@ thevoid engage <approved-target> --profile client --authz /path/to/scope.json --
 Only remove `--dry-run` after confirming the target, mode, denied phases, test
 window, and written authorization.
 
-## 4. Expected local output
+## 4. Test the commercial customer bundle
 
-Runtime databases, logs, exports, and reports are ignored by Git. Before
-sharing a support bundle, review it for customer identifiers and secrets.
+Run this section on a disposable Kali amd64 VM with no prior THE VOID install.
+Obtain the archive digest and release-key fingerprint through the authenticated
+customer portal, independently of the downloaded archive. Confirm OpenSSL is
+installed and normal Kali package sources are available for missing Snowblind
+system dependencies.
+
+```bash
+sha256sum the-void-*.tar.zst
+tar --extract --zstd --file the-void-*.tar.zst
+cd the-void-*-linux-amd64-*
+openssl pkeyutl -verify \
+  -pubin \
+  -inkey /secure/trusted-release-signing.pub \
+  -rawin \
+  -in SHA256SUMS \
+  -sigfile SHA256SUMS.sig
+sha256sum --check SHA256SUMS
+sudo ./install.sh /secure/trusted-release-signing.pub
+```
+
+Confirm:
+
+```bash
+thevoid license status
+thevoid version
+thevoid-command-center start --no-open
+thevoid-command-center status
+curl -fsS http://127.0.0.1:7070/api/health
+thevoid-command-center stop
+sudo snowblind doctor
+```
+
+The health response must show a valid entitlement for the intended product
+version. Open the application-menu entry and repeat the fictional Demo Mode
+walkthrough. Package installation must not start services, launch the browser,
+or change firewall/routing state. Do not run `snowblind engage` as part of a
+basic packaging test.
+
+For upgrade testing, preserve the entitlement and XDG state, install the newer
+packages, and confirm the same local evidence remains readable. Restore any
+active Snowblind session before upgrade or removal.
+
+## 5. Expected local output
+
+Runtime databases, logs, exports, and reports live below the operator's XDG
+directories and are ignored by Git. Privileged Snowblind recovery state lives
+under `/var/lib/blackfrost/the-void/snowblind`. Before sharing a support bundle,
+review it for customer identifiers and secrets. Never include `license.json`
+unless the protected support procedure explicitly requires it.
+
+## 6. Release acceptance
+
+The release operator must additionally complete the signed-package gate in
+[`docs/DISTRIBUTION.md`](docs/DISTRIBUTION.md). The site/store implementation
+must pass the fulfillment and authorization checklist in
+[`docs/STORE_S3_HANDOFF.md`](docs/STORE_S3_HANDOFF.md).
 
 ## Support handoff
 

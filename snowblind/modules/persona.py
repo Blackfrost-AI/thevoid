@@ -7,13 +7,13 @@ via shared bookkeeping. In v0.6.0 each persona also gets its own network
 namespace (modules/netns.py), so the isolation extends to the kernel
 network stack.
 
-State layout:
-    state/                          'default' persona (legacy compat — pre-v0.6
-        journal.json                use of snow stays here unchanged)
+State layout (root selected by SNOW_STATE_DIR / VOID_STATE_DIR / XDG):
+    <state-root>/                   'default' persona
+        journal.json
         baseline.json
         backups/
         logs/
-    state/personas/<name>/          named personas
+    <state-root>/personas/<name>/   named personas
         journal.json
         baseline.json
         backups/
@@ -24,7 +24,7 @@ The active persona is selected via:
     sudo snow --persona <name> engage
 or persistently via the SNOW_PERSONA env var. snow.py pre-parses --persona
 from sys.argv BEFORE importing util so module-globals (STATE_DIR, etc.)
-resolve to the persona's directory rather than the legacy state/.
+resolve to the persona's directory.
 
 Naming rules: alphanumeric plus dash/underscore, max 32 chars. The literal
 name 'default' is reserved for the legacy state/ dir and cannot be created
@@ -37,11 +37,9 @@ import re
 import shutil
 from pathlib import Path
 
-from .util import color, log, ROOT
+from .util import STATE_ROOT, color, log
 
-import os
-
-PERSONAS_DIR = ROOT / "state" / "personas"
+PERSONAS_DIR = STATE_ROOT / "personas"
 DEFAULT_PERSONA = "default"
 _NAME_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_-]{0,31}$")
 
@@ -67,7 +65,7 @@ def validate_name(name: str) -> None:
 def state_dir_for(name: str) -> Path:
     """Where this persona's state lives on disk."""
     if is_default(name):
-        return ROOT / "state"
+        return STATE_ROOT
     return PERSONAS_DIR / name
 
 
@@ -153,7 +151,7 @@ def list_all() -> list[dict]:
     """Inventory of personas on this box. Always includes 'default'."""
     out = [{
         "name": DEFAULT_PERSONA,
-        "state_dir": str(ROOT / "state"),
+        "state_dir": str(STATE_ROOT),
         "is_default": True,
         "has_journal": has_active_journal(DEFAULT_PERSONA),
         "is_current": current() == DEFAULT_PERSONA,

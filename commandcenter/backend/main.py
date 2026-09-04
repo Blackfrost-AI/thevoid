@@ -22,7 +22,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
-from commandcenter.backend.config import load_settings
+from commandcenter.backend.config import allowed_browser_origins, load_settings
 from commandcenter.backend.routers import (
     attack_graph,
     boneyard,
@@ -37,6 +37,7 @@ from commandcenter.backend.routers import (
 from commandcenter.backend.services.bridge import get_bridge
 from commandcenter.backend.services.poller import EventPoller
 from commandcenter.backend.ws.hub import websocket_endpoint
+from core.licensing import enforce_license_if_required
 
 try:
     from commandcenter import __version__ as _CC_VERSION
@@ -51,6 +52,7 @@ logger = logging.getLogger("void.commandcenter")
 
 
 def create_app() -> FastAPI:
+    license_status = enforce_license_if_required(required_feature="command-center")
     settings = load_settings()
     poller: EventPoller | None = None
 
@@ -88,13 +90,7 @@ def create_app() -> FastAPI:
         openapi_url="/api/openapi.json",
     )
 
-    allowed_origins = set(settings.cors_origins)
-    allowed_origins.update(
-        {
-            f"http://127.0.0.1:{settings.port}",
-            f"http://localhost:{settings.port}",
-        }
-    )
+    allowed_origins = allowed_browser_origins(settings)
 
     app.add_middleware(
         TrustedHostMiddleware,
@@ -156,9 +152,11 @@ def create_app() -> FastAPI:
         bridge = get_bridge()
         return {
             "ok": True,
+            "service": "the-void-command-center",
             "host": settings.host,
             "port": settings.port,
             "degraded": bridge.degraded,
+            "license": license_status.public_dict(),
         }
 
     @app.websocket("/ws/live")

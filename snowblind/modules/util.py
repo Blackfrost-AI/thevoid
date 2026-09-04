@@ -18,9 +18,10 @@ ROOT = Path(__file__).resolve().parent.parent
 # ---------------------------------------------------------------------------
 # Active persona comes from $SNOW_PERSONA, set by snow.py BEFORE this
 # module is first imported (pre-parsed from --persona on sys.argv). The
-# 'default' persona uses the legacy state/ path for backward compatibility
-# with installations created before v0.6.0; named personas live under
-# state/personas/<name>/.
+# The state root is never the application install directory. ``SNOW_STATE_DIR``
+# is the explicit override; a suite-wide ``VOID_STATE_DIR`` places it below
+# that root. Privileged installs default to /var/lib and non-root source runs
+# use the operator's XDG state directory.
 #
 # All module-level constants below are derived from STATE_DIR at import
 # time. Any module that needs persona-scoped state inherits the right path
@@ -29,10 +30,31 @@ ROOT = Path(__file__).resolve().parent.parent
 
 _PERSONA = os.environ.get("SNOW_PERSONA", "default")
 
+
+def _state_root() -> Path:
+    explicit = os.environ.get("SNOW_STATE_DIR", "").strip()
+    if explicit:
+        return Path(explicit).expanduser().absolute()
+    suite_state = os.environ.get("VOID_STATE_DIR", "").strip()
+    if suite_state:
+        return Path(suite_state).expanduser().absolute() / "snowblind"
+    if os.geteuid() == 0:
+        return Path("/var/lib/blackfrost/the-void/snowblind")
+    xdg_state = os.environ.get("XDG_STATE_HOME", "").strip()
+    base = (
+        Path(xdg_state).expanduser()
+        if xdg_state and Path(xdg_state).expanduser().is_absolute()
+        else Path.home() / ".local" / "state"
+    )
+    return base / "blackfrost" / "the-void" / "snowblind"
+
+
+STATE_ROOT = _state_root()
+
 if _PERSONA == "default":
-    STATE_DIR = ROOT / "state"
+    STATE_DIR = STATE_ROOT
 else:
-    STATE_DIR = ROOT / "state" / "personas" / _PERSONA
+    STATE_DIR = STATE_ROOT / "personas" / _PERSONA
 
 BACKUPS_DIR = STATE_DIR / "backups"
 JOURNAL = STATE_DIR / "journal.json"
@@ -116,7 +138,7 @@ def make_system_dir(path, mode: int | None = None) -> None:
 
 def backup_path(name: str) -> Path:
     """Stable per-module backup file under state/backups/. Survives reboot
-    (state/ lives next to snow.py); /tmp is tmpfs and would lose this."""
+    (persistent application state); /tmp is tmpfs and would lose this."""
     BACKUPS_DIR.mkdir(parents=True, exist_ok=True)
     return BACKUPS_DIR / name
 

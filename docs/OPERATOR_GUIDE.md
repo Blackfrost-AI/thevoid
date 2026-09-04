@@ -43,12 +43,30 @@ multi-tenant control plane.
 Demo Mode swaps the interface onto isolated synthetic stores. Its records are
 clearly marked and are discarded when Demo Mode is disabled.
 
+Start it as the desktop operator, never with `sudo`:
+
+```bash
+thevoid-command-center start
+thevoid-command-center status
+thevoid-command-center stop
+```
+
+Commercial packages verify the offline signed entitlement before serving the
+browser. Inspect it with `thevoid license status`; do not bypass a failed gate.
+The Settings view shows the same sanitized state, customer ID, expiry, and
+licensed components.
+
 ## Snowblind
 
 Snowblind is bundled under `snowblind/` and maintains its own operational and
 restoration workflow. Read its documentation and acceptable-use policy before
 running privileged commands. Always run the diagnostic first and retain console
 access capable of recovery if host network policy is changed.
+
+Snowblind is part of the customer bundle but remains a separate package and
+privilege boundary. Installation performs no active network changes. Its
+privileged journal defaults to `/var/lib/blackfrost/the-void/snowblind` and
+must remain intact until any engaged state has been restored.
 
 ## Closeout
 

@@ -8,7 +8,7 @@
 |____/|_| \_|\___/ \_/\_/  |____/|_____|___|_| \_|____/
 ```
 
-**Linux anonymity / OPSEC toolkit by [Blackfrost-AI](https://github.com/Blackfrost-AI).
+**Linux anonymity / OPSEC toolkit by [Blackfrost AI](https://blackfrost.ai).
 One command to turn a Linux host into an anonymous-by-default Tor client with a
 kill switch, and one command to verify it actually works.** The project ships a
 single CLI: `snow`. Authorized use only — on systems you own or have written
@@ -33,20 +33,27 @@ permission to test. See [ACCEPTABLE_USE.md](ACCEPTABLE_USE.md).
 
 ## Install
 
-```bash
-git clone https://github.com/Blackfrost-AI/Snowblind.git
-cd Snowblind
-sudo bash install.sh
-```
+Snowblind ships inside the licensed THE VOID customer bundle as its own native
+package. Install the bundle once with
+`sudo ./install.sh /path/to/blackfrost-release-signing.pub`; both `snowblind`
+and the shorter compatibility command `snow` then become available. The
+Blackfrost package does not alter routing, firewall policy, host identity, or
+service state during installation; normal Kali dependency-package policy still
+applies.
 
-The install also drops `/etc/tmpfiles.d/snow-tor.conf` so `/run/tor` is
-recreated on every boot. Snowblind disables the system `tor.service` (to free
-Tor's port for its own instance), and that service is what normally creates
-`/run/tor` — without the tmpfiles drop, Tor would fail to write its PidFile
-on the next reboot and bootstrap would silently time out.
+The package provides a tmpfiles rule for `/run/tor`, but it deliberately does
+not disable or start services. Run `sudo snowblind doctor` after installation;
+make any service-state change explicitly after reviewing the diagnostic and
+your recovery path.
 
 Tested on Kali / Debian-family with systemd, NetworkManager, and netfilter
-(iptables-nft). PRs welcome for other distros.
+(iptables-nft). Other platforms are outside the commercial release target.
+
+Persistent state is external to the read-only package. Privileged runs use
+`/var/lib/blackfrost/the-void/snowblind`; non-root source runs use the XDG
+state root. `SNOW_STATE_DIR` is the explicit override, and `VOID_STATE_DIR`
+places Snowblind under the suite-wide state root. Never delete the state while
+a journaled session still needs restoration.
 
 ## Usage
 
@@ -87,7 +94,7 @@ session env (`DISPLAY` from `who`, `XAUTHORITY` from `~/.Xauthority`,
 `/run/user/<uid>/`), and drops privileges to that user via `preexec_fn`
 before exec'ing the browser.
 
-**Browser logs:** stdout and stderr land at `state/logs/browser-stdout.log`
+**Browser logs:** stdout and stderr land at `<state-root>/logs/browser-stdout.log`
 and `browser-stderr.log` (NOT `/dev/null`, which is the right answer for a
 "silently fails" debug story). If the browser exits within 2s, Snowblind
 surfaces the last 15 lines of stderr.
@@ -145,12 +152,12 @@ host iptables:
 **State layout:**
 
 ```
-state/                          'default' persona (legacy, backward-compat)
+<state-root>/                   'default' persona
     journal.json
     baseline.json
     backups/                    iptables-save + /etc/hosts snapshots
     logs/                       browser stdout/stderr
-state/personas/acme-h1/         named persona
+<state-root>/personas/acme-h1/  named persona
     journal.json
     baseline.json
     backups/
@@ -171,10 +178,8 @@ namespace and the active persona's namespace simultaneously.
 to a single persona's gateway IP per `engage`. Switch personas by
 running `restore` first, then `engage` under the new persona.
 
-**Backward compat:** `--persona` unset = 'default' persona = host
-namespace path. Behaves exactly as v0.5.1 did. Existing installations
-upgrading to v0.6.0 see no behavior change until they explicitly
-create a named persona.
+`--persona` unset selects the default persona in the host namespace. Named
+personas remain isolated below `<state-root>/personas/`.
 
 ### `--upstream` — Tor or WireGuard egress
 
@@ -268,13 +273,13 @@ hostnamectl, etc.) is printed in magenta with `[dry]` prefix and returns success
 without executing. System-file writes (`/etc/hosts`, `/etc/tor/torrc.snow`,
 the ControlPort password file) and daemon starts (tor, wg-quick) are likewise
 printed and skipped — a dry run does not mutate the host or start anything.
-State-file writes under `state/` (journal, baseline) DO still happen, so a
+State-file writes below `<state-root>/` (journal, baseline) DO still happen, so a
 dry-run engage leaves a journal you should `snow restore` after. This is
 "preview the network-level intent," not a full sandbox.
 
 ### Hash-chained journal (tamper-evident)
 
-Every `state/journal.json` entry carries `prev_hash` (the previous entry's
+Every `<state-root>/journal.json` entry carries `prev_hash` (the previous entry's
 `entry_hash`, or `"GENESIS"` for the first) and `entry_hash` (SHA-256 over the
 canonical JSON of the entry minus its own hash). `snow status` and `snow
 restore` both verify the chain; tampering with any historical entry breaks the
@@ -373,7 +378,7 @@ modules/
   rotate.py           NEWNYM over ControlPort
   leaktest.py         IP / DNS / IPv6 verification (real DNS leak test via dig)
   restore.py          journal replay in reverse (cancels any pending duration timer)
-state/
+<state-root>/
   baseline.json       pre-engage snapshot
   journal.json        every state change, hash-chained (prev_hash + entry_hash)
   backups/            iptables-save + /etc/hosts snapshots (survive reboot)
@@ -466,7 +471,7 @@ Tor Browser bundles its own tor instance. Running it alongside `sudo snow engage
 
 - **UFW (nftables backend)**: Snowblind calls raw `iptables` but installs into
   named chains (`snow-trans`, `snow-killswitch`) and snapshots filter+nat
-  state to `state/backups/` before any change. UFW INPUT rules survive an
+  state to `<state-root>/backups/` before any change. UFW INPUT rules survive an
   engage→restore cycle intact. The `snow-killswitch` chain self-terminates
   in `-j DROP` — it does NOT `RETURN` to `OUTPUT`. This is deliberate: a
   RETURN would hand kill-switched packets back to `OUTPUT`, where UFW's
@@ -499,7 +504,7 @@ Tor Browser bundles its own tor instance. Running it alongside `sudo snow engage
   won't corrupt backups or duplicate rules.
 - `transproxy.apply()` refuses to run if its named chain already exists or
   if its journal entry is present.
-- Backups live at `state/backups/`, not `/tmp`. They survive reboot, so a
+- Backups live at `<state-root>/backups/`, not `/tmp`. They survive reboot, so a
   panic-restore on next boot will actually have something to replay.
 
 ## Security hardening notes (2026-09 review)
@@ -517,7 +522,7 @@ Result of a full code audit; all shipped in-tree:
   quarantined to `journal.json.corrupt-<ts>` and `snow restore` /
   `snow status` say so loudly instead of misreporting "no journal".
 - **Persona names validated at dispatch.** `--persona` / `$SNOW_PERSONA`
-  feed `state/personas/<name>/` directly; an unchecked name containing `/`
+  feed `<state-root>/personas/<name>/` directly; an unchecked name containing `/`
   or `..` was a path traversal. Same charset rule as `persona create`.
 - **Target FQDNs and `--lan` CIDRs validated** before they reach
   `/etc/hosts` or iptables — a whitespace-bearing FQDN could previously
@@ -527,7 +532,7 @@ Result of a full code audit; all shipped in-tree:
   leak), and a missing/stale baseline IP no longer renders a green
   "egressing via upstream" verdict — it reports the clearnet check as
   unverifiable.
-- **Secrets at 0600:** WG config backups in `state/backups/` (they hold the
+- **Secrets at 0600:** upstream config backups in `<state-root>/backups/` (they hold the
   tunnel private key and were 0644), journal + baseline (they hold your real
   IP/MAC/hostname), and browser logs. Tor's data dir is 0700.
 - **`--dry-run` no longer stages WireGuard configs** into `/etc/wireguard` —

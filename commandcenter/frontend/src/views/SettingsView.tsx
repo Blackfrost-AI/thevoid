@@ -1,3 +1,5 @@
+import { useEffect, useState } from 'react'
+import { api, type HealthResponse } from '../api/client'
 import { Panel } from '../components/common/Panel'
 import { useEngagementStore } from '../store/engagement'
 import { useWsStore } from '../store/websocket'
@@ -6,6 +8,22 @@ export function SettingsView() {
   const status = useEngagementStore((s) => s.status)
   const ws = useWsStore((s) => s.state)
   const latency = useEngagementStore((s) => s.latencyMs)
+  const [health, setHealth] = useState<HealthResponse | null>(null)
+  const [healthError, setHealthError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let active = true
+    api.health()
+      .then((value) => {
+        if (active) setHealth(value)
+      })
+      .catch((error: unknown) => {
+        if (active) setHealthError(error instanceof Error ? error.message : String(error))
+      })
+    return () => {
+      active = false
+    }
+  }, [])
 
   return (
     <div className="max-w-2xl space-y-3">
@@ -13,7 +31,7 @@ export function SettingsView() {
         <dl className="space-y-2 text-[12px]">
           <div className="flex gap-3">
             <dt className="w-36 text-void-text-mute">Binding</dt>
-            <dd className="mono">127.0.0.1:7070</dd>
+            <dd className="mono">{health ? `${health.host}:${health.port}` : 'localhost'}</dd>
           </div>
           <div className="flex gap-3">
             <dt className="w-36 text-void-text-mute">Auth model</dt>
@@ -32,6 +50,40 @@ export function SettingsView() {
             <dd className="mono">{latency != null ? `${latency}ms` : '—'}</dd>
           </div>
         </dl>
+      </Panel>
+
+      <Panel title="Commercial entitlement">
+        {health?.license ? (
+          <dl className="space-y-2 text-[12px]">
+            <div className="flex gap-3">
+              <dt className="w-36 text-void-text-mute">Status</dt>
+              <dd className={health.license.permitted ? 'text-emerald-400' : 'text-red-400'}>
+                {health.license.state}
+              </dd>
+            </div>
+            <div className="flex gap-3">
+              <dt className="w-36 text-void-text-mute">Customer</dt>
+              <dd className="mono">{health.license.customer_id || '—'}</dd>
+            </div>
+            <div className="flex gap-3">
+              <dt className="w-36 text-void-text-mute">License</dt>
+              <dd className="mono">{health.license.license_id || '—'}</dd>
+            </div>
+            <div className="flex gap-3">
+              <dt className="w-36 text-void-text-mute">Expires</dt>
+              <dd className="mono">{health.license.expires_at || 'never'}</dd>
+            </div>
+            <div className="flex gap-3">
+              <dt className="w-36 text-void-text-mute">Features</dt>
+              <dd>{health.license.features.join(', ') || '—'}</dd>
+            </div>
+            <p className="pt-1 text-void-text-dim">{health.license.message}</p>
+          </dl>
+        ) : (
+          <p className="text-[12px] text-void-text-dim">
+            {healthError ? `Unable to read entitlement: ${healthError}` : 'Checking entitlement…'}
+          </p>
+        )}
       </Panel>
 
       <Panel title="Service health">

@@ -90,6 +90,27 @@ export interface DemoStatus {
   note?: string
 }
 
+export interface LicenseStatus {
+  state: string
+  permitted: boolean
+  required: boolean
+  message: string
+  customer_id: string | null
+  license_id: string | null
+  expires_at: string | null
+  features: string[]
+  product_version: string | null
+}
+
+export interface HealthResponse {
+  ok: boolean
+  service: 'the-void-command-center'
+  host: string
+  port: number
+  degraded: string[]
+  license: LicenseStatus
+}
+
 export interface WarLogEntry {
   id?: string
   timestamp?: string
@@ -138,7 +159,7 @@ export interface AttackGraph {
 }
 
 export const api = {
-  health: () => request<{ ok: boolean; degraded: string[] }>('/api/health'),
+  health: () => request<HealthResponse>('/api/health'),
   status: () => request<Status>('/api/status'),
   targets: (params?: Record<string, string>) => {
     const q = params ? '?' + new URLSearchParams(params).toString() : ''

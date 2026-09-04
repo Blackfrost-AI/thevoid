@@ -37,6 +37,7 @@ from agent.injection_defense import (
     validation_to_dict,
 )
 from core.warlog import LogLevel, WarLog
+from config.paths import get_runtime_paths
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -247,7 +248,7 @@ class TestInjectionDefenseInit:
     def test_default_init(self):
         d = InjectionDefense()
         assert d.enabled is True
-        assert d.quarantine_dir == "results/quarantine"
+        assert d.quarantine_dir == str(get_runtime_paths().quarantine)
         assert d.warlog is None
 
     def test_custom_init(self):
@@ -519,10 +520,19 @@ class TestQuarantine:
         assert q.redacted_summary.endswith("...")
         assert len(q.redacted_summary) < 600
 
-    def test_quarantine_full_payload_path(self):
-        d = InjectionDefense(quarantine_dir="/tmp/q")
+    def test_quarantine_full_payload_path(self, tmp_path):
+        quarantine_dir = tmp_path / "q"
+        d = InjectionDefense(quarantine_dir=str(quarantine_dir))
         q = d.quarantine("payload", "reason", Severity.HIGH, "src")
-        assert q.full_payload_path.startswith("/tmp/q/")
+        assert q.full_payload_path.startswith(f"{quarantine_dir}/")
+
+    def test_quarantine_storage_is_private(self, tmp_path):
+        quarantine_dir = tmp_path / "quarantine"
+        d = InjectionDefense(quarantine_dir=str(quarantine_dir))
+        q = d.quarantine("payload", "reason", Severity.HIGH, "src")
+
+        assert quarantine_dir.stat().st_mode & 0o777 == 0o700
+        assert Path(q.full_payload_path).stat().st_mode & 0o777 == 0o600
 
     def test_quarantine_metadata(self):
         d = InjectionDefense()

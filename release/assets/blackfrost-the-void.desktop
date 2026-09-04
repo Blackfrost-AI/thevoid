@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=THE VOID Command Center
+GenericName=Security Validation Console
+Comment=Open the local visual console for authorized security validation
+Exec=thevoid-command-center start
+Icon=blackfrost-the-void
+Terminal=false
+Categories=System;Security;
+StartupNotify=true

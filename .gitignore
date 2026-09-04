@@ -86,6 +86,12 @@ Thumbs.db
 
 # ── Archive (local operator tarballs — never commit) ───────
 archive/
+release/out/
+release/wheelhouse/
+*.tar.zst
+*.license.json
+*.sig
+*.sha256
 
 # ── Quarantine / temp ──────────────────────────────────────
 results/quarantine/

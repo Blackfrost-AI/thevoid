@@ -160,6 +160,13 @@ def cli(ctx: click.Context, banner: bool) -> None:
     manage targets, and check status. Prefer --profile demo for client demos.
     """
     ctx.ensure_object(dict)
+    if ctx.invoked_subcommand not in {None, "license", "version"}:
+        from core.licensing import LicenseError, enforce_license_if_required
+
+        try:
+            enforce_license_if_required()
+        except LicenseError as exc:
+            raise click.ClickException(str(exc)) from exc
     if banner or ctx.invoked_subcommand is None:
         _print_banner()
     if ctx.invoked_subcommand is None:
@@ -884,6 +891,49 @@ def status(config, json_out):
         title="[bold red]THE VOID — Status[/]",
         border_style="red",
     ))
+
+
+# ─── license ──────────────────────────────────────────────────────────────────
+
+@cli.group()
+def license():
+    """Inspect the locally installed commercial entitlement."""
+
+
+@license.command(name="status")
+@click.option("--json-output", "json_out", is_flag=True,
+              help="Output entitlement status as JSON.")
+@click.option(
+    "--feature",
+    type=click.Choice(["core", "command-center", "snowblind"]),
+    default="core",
+    help="Require a particular licensed component.",
+)
+def license_status(json_out, feature):
+    """Verify the configured entitlement without contacting a server."""
+    from core.licensing import configured_license_status
+
+    result = configured_license_status(required_feature=feature).public_dict()
+    if json_out:
+        click.echo(json.dumps(result, indent=2, sort_keys=True))
+        if not result["permitted"]:
+            raise click.exceptions.Exit(1)
+        return
+
+    color = "green" if result["permitted"] else "red"
+    lines = [
+        f"State: [{color}]{result['state']}[/]",
+        f"Enforced: {'yes' if result['required'] else 'no'}",
+        f"Customer: {result['customer_id'] or '—'}",
+        f"License: {result['license_id'] or '—'}",
+        f"Expires: {result['expires_at'] or 'never'}",
+        f"Features: {', '.join(result['features']) or '—'}",
+        "",
+        str(result["message"]),
+    ]
+    console.print(Panel("\n".join(lines), title="THE VOID — License", border_style=color))
+    if not result["permitted"]:
+        raise click.exceptions.Exit(1)
 
 
 # ─── version ──────────────────────────────────────────────────────────────────

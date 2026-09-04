@@ -6,12 +6,12 @@ import asyncio
 import json
 import logging
 import time
-from typing import Any, Dict, List, Optional, Set
+from typing import Any
 
 from fastapi import WebSocket
 from starlette.websockets import WebSocketDisconnect, WebSocketState
 
-from commandcenter.backend.config import load_settings
+from commandcenter.backend.config import allowed_browser_origins, load_settings
 
 logger = logging.getLogger("void.commandcenter.ws")
 
@@ -19,10 +19,20 @@ logger = logging.getLogger("void.commandcenter.ws")
 class ConnectionManager:
     """Track live WebSocket clients and their channel subscriptions."""
 
-    VALID_CHANNELS = frozenset({"warlog", "c2", "engagement", "integrity", "metrics", "attack_graph", "demo"})
+    VALID_CHANNELS = frozenset(
+        {
+            "warlog",
+            "c2",
+            "engagement",
+            "integrity",
+            "metrics",
+            "attack_graph",
+            "demo",
+        }
+    )
 
     def __init__(self) -> None:
-        self._clients: Dict[WebSocket, Set[str]] = {}
+        self._clients: dict[WebSocket, set[str]] = {}
         self._lock = asyncio.Lock()
 
     @property
@@ -41,16 +51,16 @@ class ConnectionManager:
             self._clients.pop(websocket, None)
         logger.info("WS client disconnected (total=%d)", len(self._clients))
 
-    async def subscribe(self, websocket: WebSocket, channels: List[str]) -> None:
+    async def subscribe(self, websocket: WebSocket, channels: list[str]) -> None:
         valid = {c for c in channels if c in self.VALID_CHANNELS}
         async with self._lock:
             if websocket in self._clients:
                 self._clients[websocket] = valid or set(self.VALID_CHANNELS)
 
-    async def broadcast(self, channel: str, message: Dict[str, Any]) -> None:
+    async def broadcast(self, channel: str, message: dict[str, Any]) -> None:
         """Send message to all clients subscribed to channel."""
         payload = json.dumps(message, default=str)
-        dead: List[WebSocket] = []
+        dead: list[WebSocket] = []
         async with self._lock:
             targets = [
                 ws for ws, subs in self._clients.items() if channel in subs
@@ -66,7 +76,9 @@ class ConnectionManager:
         for ws in dead:
             await self.disconnect(ws)
 
-    async def send_personal(self, websocket: WebSocket, message: Dict[str, Any]) -> None:
+    async def send_personal(
+        self, websocket: WebSocket, message: dict[str, Any]
+    ) -> None:
         try:
             await websocket.send_text(json.dumps(message, default=str))
         except Exception:
@@ -82,7 +94,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
     origin = websocket.headers.get("origin")
     if origin:
         settings = load_settings()
-        if origin not in settings.cors_origins:
+        if origin not in allowed_browser_origins(settings):
             logger.warning("WS rejected: origin %s not allowed", origin)
             await websocket.close(code=1008)
             return

@@ -35,6 +35,7 @@ dev = [
 [project.scripts]
 void = "run:main"
 thevoid = "cli.app:main"
+thevoid-command-center = "commandcenter.launcher:main"
 
 [tool.setuptools]
 # Keep packaging lean; sub-packages are auto-discovered from the tree.

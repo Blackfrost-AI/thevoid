@@ -27,8 +27,8 @@ setup(
     install_requires=[
         "python-dotenv>=1.0.0",
         "requests>=2.31.0",
-        "urllib3>=2.1.0",
-        "cryptography>=41.0.0",
+        "urllib3>=2.7.0",
+        "cryptography>=50.0.1",
         "sqlalchemy>=2.0.0",
         "pyyaml>=6.0.0",
         "toml>=0.10.0",
@@ -61,6 +61,7 @@ setup(
         "console_scripts": [
             "void=run:main",
             "thevoid=cli.app:main",
+            "thevoid-command-center=commandcenter.launcher:main",
         ],
     },
     classifiers=[
@@ -72,6 +73,7 @@ setup(
         "Programming Language :: Python :: 3.10",
         "Programming Language :: Python :: 3.11",
         "Programming Language :: Python :: 3.12",
+        "Programming Language :: Python :: 3.13",
         "Topic :: Security",
         "Topic :: System :: Networking :: Monitoring",
     ],

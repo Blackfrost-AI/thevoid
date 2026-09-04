@@ -61,7 +61,7 @@ def main():
     # interpret a subcommand name as a target.
     click_commands = {
         "engage", "recon", "report", "targets", "status", "version",
-        "demo", "scenarios", "continuity",
+        "demo", "scenarios", "continuity", "license",
     }
     if not raw_args or raw_args[0].startswith("-") or raw_args[0] in click_commands:
         from cli.app import cli

@@ -88,6 +88,11 @@ def mock_bridge():
 
 @pytest.fixture
 def client(mock_bridge):
+    # Import the router graph before patching the shared getter. Otherwise a
+    # router imported while that symbol is mocked can retain the mock after the
+    # fixture exits and contaminate later integration tests.
+    from commandcenter.backend.main import create_app
+
     with patch(
         "commandcenter.backend.services.bridge.get_bridge", return_value=mock_bridge
     ), patch(
@@ -112,8 +117,6 @@ def client(mock_bridge):
         "commandcenter.backend.services.poller.EventPoller.stop", return_value=None
     ):
         # Rebuild app so lifespan is manageable
-        from commandcenter.backend.main import create_app
-
         app = create_app()
         with TestClient(app, base_url="http://127.0.0.1:7070") as c:
             yield c
@@ -123,6 +126,8 @@ def test_health(client):
     r = client.get("/api/health")
     assert r.status_code == 200
     assert r.json()["ok"] is True
+    assert r.json()["service"] == "the-void-command-center"
+    assert r.json()["license"]["state"] == "not_required"
 
 
 def test_bundled_frontend_index(client):
@@ -137,6 +142,16 @@ def test_bundled_frontend_index(client):
 def test_non_loopback_host_is_rejected(client):
     r = client.get("/api/health", headers={"host": "example.invalid"})
     assert r.status_code == 400
+
+
+def test_custom_port_is_in_same_origin_browser_allowlist():
+    from commandcenter.backend.config import Settings, allowed_browser_origins
+
+    origins = allowed_browser_origins(Settings(port=7444))
+
+    assert "http://127.0.0.1:7444" in origins
+    assert "http://localhost:7444" in origins
+    assert "http://127.0.0.1:7070" not in origins
 
 
 def test_cross_origin_mutation_is_rejected(client, mock_bridge):

@@ -300,6 +300,8 @@ class WarLog:
         self.keep_archives = keep_archives
 
         os.makedirs(self.log_dir, exist_ok=True)
+        log_parent = os.path.dirname(os.path.abspath(self.log_file))
+        os.makedirs(log_parent, exist_ok=True)
 
         # DB path: warlog.db in the log_dir
         self._db_path = os.path.join(self.log_dir, "warlog.db")

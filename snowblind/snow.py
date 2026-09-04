@@ -5,8 +5,8 @@ snow — anonymity / OPSEC tool.
 Single-binary CLI that chains together the modules in ./modules to turn a
 Kali host into an anonymous-by-default client: MAC randomization, hostname
 rotation, IPv6 kill, Tor transparent proxy, kill-switch firewall, circuit
-rotation, and leak verification. Every state change is journaled to
-state/journal.json so `snow restore` can reverse it.
+rotation, and leak verification. Every state change is journaled below the
+configured persistent state directory so `snow restore` can reverse it.
 
 For authorized use on systems you own or have written permission to test.
 """
@@ -632,7 +632,11 @@ def main() -> int:
     if args.dry_run:
         set_dry_run(True)
         log("dry-run: subprocess calls will be printed instead of executed", "warn")
-    os.makedirs(STATE_DIR, exist_ok=True)
+    os.makedirs(STATE_DIR, mode=0o700, exist_ok=True)
+    try:
+        os.chmod(STATE_DIR, 0o700)
+    except OSError:
+        pass
     try:
         return args.fn(args)
     except KeyboardInterrupt:

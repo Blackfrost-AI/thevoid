@@ -30,6 +30,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
+from config.paths import get_runtime_paths
 from core.warlog import LogLevel, WarLog
 
 logger = logging.getLogger("void.injection_defense")
@@ -248,11 +249,14 @@ class InjectionDefense:
 
     QUARANTINE_THRESHOLD = 3            # # of findings to trigger quarantine at non-critical severity
 
-    def __init__(self, warlog: Optional[WarLog] = None,
-                 quarantine_dir: str = "results/quarantine",
-                 enabled: bool = True):
+    def __init__(
+        self,
+        warlog: Optional[WarLog] = None,
+        quarantine_dir: Optional[str] = None,
+        enabled: bool = True,
+    ):
         self.warlog = warlog
-        self.quarantine_dir = quarantine_dir
+        self.quarantine_dir = quarantine_dir or str(get_runtime_paths().quarantine)
         self.enabled = enabled
         self._findings_history: List[Finding] = []   # running window for threshold logic
 
@@ -418,15 +422,19 @@ class InjectionDefense:
             finding_count=len(findings or []),
             critical_count=critical_count,
             redacted_summary=redacted,
-            full_payload_path=f"{self.quarantine_dir}/{record_id}.json",
+            full_payload_path=os.path.join(self.quarantine_dir, f"{record_id}.json"),
             metadata=metadata or {},
         )
 
         # Persist the full payload to disk so quarantined content is
         # available for forensic review without keeping it in memory.
         try:
-            os.makedirs(self.quarantine_dir, exist_ok=True)
-            with open(record.full_payload_path, "w") as f:
+            os.makedirs(self.quarantine_dir, mode=0o700, exist_ok=True)
+            os.chmod(self.quarantine_dir, 0o700)
+            flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+            flags |= getattr(os, "O_NOFOLLOW", 0)
+            descriptor = os.open(record.full_payload_path, flags, 0o600)
+            with os.fdopen(descriptor, "w", encoding="utf-8") as f:
                 json.dump(
                     {
                         "record_id": record_id,

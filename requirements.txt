@@ -5,10 +5,10 @@ python-dotenv>=1.0.0
 
 # Networking
 requests>=2.31.0
-urllib3>=2.1.0
+urllib3>=2.7.0
 
 # Cryptography
-cryptography>=41.0.0
+cryptography>=50.0.1
 
 # Database
 sqlalchemy>=2.0.0
