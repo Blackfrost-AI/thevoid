@@ -29,12 +29,14 @@ opentor/database/*.db-*
 *.log
 void.log
 results/
+reports/
 loot/
 c2_data/
 .shadow/sessions/
 .shadow/checkpoints/
 commandcenter/exports/
 commandcenter/session_state.db
+commandcenter/demo_runtime/
 commandcenter/**/__pycache__/
 snowblind/state/
 Frosty/.shadow/

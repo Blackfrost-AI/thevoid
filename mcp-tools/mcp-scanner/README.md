@@ -1,132 +1,149 @@
-# MCP-Scanner
+# MCP Scanner
 
-A comprehensive vulnerability scanner for MCP (Model Context Protocol) server deployments.
+Bundled MCP scanning integration for THE VOID.
 
-## Overview
+This package supplies the <code>Scanner</code> interface used by Frosty's
+<code>mcp_scan</code> phase. It is included in the client repository and does
+not require a second clone or download.
 
-MCP-Scanner provides pattern-based vulnerability detection, CVE matching, dependency analysis, and configuration drift detection for MCP servers.
+> **Current status: integration scaffold.** The package proves loading,
+> orchestration, result flow, and report plumbing. It is not yet a production
+> vulnerability authority, and its findings must not be presented as verified
+> vulnerabilities.
 
-## Features
+## At a glance
 
-- **Pattern-Based Analysis**: Detects known vulnerability patterns in MCP server configurations
-- **CVE Matching**: Correlates detected vulnerabilities with known CVE entries
-- **Dependency Inspection**: Analyzes project dependencies for vulnerabilities
-- **Configuration Drift**: Detects deviations from baseline configurations
-- **Multi-Format Reporting**: Generates reports in HTML, PDF, and JSON formats
-- **Docker Support**: Containerized deployment with Docker
+| Detail | Value |
+|---|---|
+| Package version | 1.0.0 |
+| Runtime | Local Python |
+| THE VOID integration | <code>agent/shadow_agent.py</code> |
+| Registered phase | <code>mcp_scan</code> |
+| Network service | None in the supported client path |
+| License | Root THE VOID proprietary license |
 
-## Installation
+## Included modules
 
-### Prerequisites
+| Module | Intended responsibility |
+|---|---|
+| <code>scanner.py</code> | Coordinate analysis and return <code>ScanResult</code> |
+| <code>analyzer.py</code> | Pattern-oriented configuration and code analysis |
+| <code>config_parser.py</code> | Configuration discovery and baseline drift |
+| <code>dependency_inspector.py</code> | Dependency inventory |
+| <code>cve_matcher.py</code> | Local finding-to-advisory correlation |
+| <code>report_generator.py</code> | HTML, JSON, and PDF report plumbing |
 
-- Python 3.11 or higher
-- pip 23.0 or higher
-- Docker 24.0 or higher (optional)
+## Current limitations
 
-### Install from Source
+The present source contains deterministic placeholder behavior in important
+paths:
 
-```bash
-git clone https://github.com/mcp-tools/mcp-scanner.git
-cd mcp-scanner
-pip install -r requirements.txt
-```
+- Configuration and code analysis do not yet parse and evaluate the target
+  files comprehensively.
+- Configuration discovery currently produces a baseline fixture rather than a
+  verified inventory of the target tree.
+- Dependency inspection currently returns fixture dependencies rather than
+  parsing lock files and manifests.
+- Advisory matching uses a bundled sample data set and permissive correlation
+  logic; matches are not validated findings.
+- HTML output contains only a summary, JSON serialization is not complete for
+  every nested result type, and PDF output is a placeholder.
+- There is no supported standalone CLI or HTTP service.
+- The bundled Dockerfile is a development artifact and references assets that
+  are not part of this client package; it is not in the accepted build path.
 
-### Docker Installation
+These limitations are deliberately documented so a successful
+<code>mcp_scan</code> phase cannot be mistaken for production-grade assurance.
 
-```bash
-docker build -t mcp-scanner:1.0.0 .
-docker run -p 8080:8080 mcp-scanner:1.0.0
-```
+## Supported use in this release
 
-## Usage
+Use the package only for:
 
-### Basic Scanning
+- Verifying that Frosty can load the scanner integration.
+- Exercising phase orchestration and evidence flow in an authorized lab.
+- Developing and testing real detector implementations behind the stable
+  <code>Scanner</code> and <code>ScanResult</code> interfaces.
 
-```python
-from mcp_scanner import Scanner
+Do not use scaffold output as the sole basis for a client severity,
+remediation, compliance, or exposure statement.
 
-scanner = Scanner()
-result = scanner.scan(target_path="/path/to/mcp/server")
-print(f"Vulnerabilities found: {len(result.vulnerabilities)}")
-```
+## Local smoke test
 
-### Report Generation
+From the THE VOID repository root:
 
-```python
-report_path = scanner.generate_report(
-    result=result,
-    format="html",
-    output_path="reports/scan_report.html"
+~~~bash
+PYTHONPATH=mcp-tools/mcp-scanner python3 - <<'PY'
+from pathlib import Path
+
+from src import Scanner
+
+result = Scanner().scan(Path("."))
+print(
+    {
+        "target": result.target_path,
+        "findings": len(result.vulnerabilities),
+        "dependencies": len(result.dependencies),
+        "drift": len(result.configuration_drift),
+    }
 )
-```
+PY
+~~~
 
-### Configuration
+This confirms that the package imports and the orchestration surface runs. It
+does not validate the accuracy of the returned findings.
 
-Create a configuration file at `config/scanner.yaml`:
+To inspect how the phase would be planned without running tools:
 
-```yaml
-scanner:
-  scan_depth: comprehensive
-  include_dependencies: true
-  drift_detection: true
-  report_formats:
-    - html
-    - json
-    - pdf
-```
+~~~bash
+thevoid engage <approved-target> --scenario mcp-critical \
+  --profile client --authz /secure/path/engagement-scope.json --dry-run
+~~~
 
-## Project Structure
+The <code>mcp-critical</code> scenario also includes other active MCP phases.
+Do not remove <code>--dry-run</code> unless every resolved phase is explicitly
+authorized.
 
-```
-mcp-scanner/
-├── src/
-│   ├── __init__.py
-│   ├── scanner.py
-│   ├── analyzer.py
-│   ├── cve_matcher.py
-│   ├── dependency_inspector.py
-│   ├── config_parser.py
-│   └── report_generator.py
-├── config/
-│   └── scanner.yaml
-├── tests/
-│   └── test_scanner.py
-├── scripts/
-│   └── entrypoint.sh
-├── Dockerfile
-├── requirements.txt
-└── README.md
-```
+## Development verification
 
-## API Reference
+~~~bash
+python3 -m compileall -q mcp-tools/mcp-scanner/src
+python3 -m pytest tests -q
+~~~
 
-### Scanner Class
+The root test suite covers THE VOID's broader phase and safety contracts.
+Dedicated scanner fixtures and detector-level accuracy tests remain an
+acceptance requirement.
 
-**Methods:**
-- `scan(target_path, options)`: Perform comprehensive scan
-- `generate_report(result, format, output_path)`: Generate scan report
-- `get_results()`: Retrieve all scan results
+## Production acceptance requirements
 
-### ScanResult Class
+Before scanner findings are client-reportable:
 
-**Attributes:**
-- `target_path`: Scanned target path
-- `vulnerabilities`: List of detected vulnerabilities
-- `dependencies`: Analyzed dependencies
-- `configuration_drift`: Configuration drift findings
-- `metadata`: Scan metadata and statistics
+1. Discover and parse supported configuration, source, manifest, and lock-file
+   formats from the actual target path.
+2. Replace fixture dependencies and drift records with evidence derived from
+   inspected files.
+3. Use a maintained, attributable advisory source with deterministic version
+   matching and no unconditional correlations.
+4. Normalize every result to serializable primitives and validate all advertised
+   report formats.
+5. Add positive, negative, malformed-input, path-boundary, and regression
+   fixtures with documented expected results.
+6. Define false-positive handling, severity rules, data provenance, and update
+   policy.
+7. Either complete and test the container assets or remove the unsupported
+   Docker path.
+8. Pass the root unit, secret, dependency, and lint gates on the intended Kali
+   machine and in CI.
 
-## Contributing
+## Data handling
 
-1. Fork the repository
-2. Create a feature branch
-3. Implement changes with tests
-4. Submit a pull request
+The scanner accepts a local path. Keep real client projects outside this
+repository, constrain the path to approved material, and review any derived
+evidence before export. Do not commit scanned source, target configuration,
+credentials, generated reports, or customer identifiers.
 
 ## License
 
-MIT License - See LICENSE file for details.
-
-## Support
-
-For issues and feature requests, please visit the GitHub repository.
+This bundled package is governed by the proprietary
+[root license](../../LICENSE). No separate open-source license is granted by
+this directory.
