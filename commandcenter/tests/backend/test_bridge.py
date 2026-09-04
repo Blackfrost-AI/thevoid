@@ -106,7 +106,7 @@ def test_attack_log_reconstructs_persisted_engagements():
     b._chaos = None
 
     assert b.get_attack_log() == [payload]
-    b._boneyard.search.assert_called_once_with(category="attack_web01_1", limit=500)
+    b._boneyard.search.assert_called_once_with(category="attack_web01_1", limit=10001)
 
 
 def test_report_refreshes_attack_log_from_store():

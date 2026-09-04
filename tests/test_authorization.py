@@ -13,80 +13,57 @@ from core.target import Target
 
 
 class TestAuthorizationGate:
-    def test_open_when_no_file(self):
+    @staticmethod
+    def document(**overrides):
+        from datetime import datetime, timedelta, timezone
+        now = datetime.now(timezone.utc)
+        return {
+            "authorized": True, "operator": "fixture", "engagement_name": "offline-test",
+            "in_scope": ["fixture.invalid"], "allowed_modes": ["quick", "full"],
+            "not_before": (now - timedelta(minutes=1)).isoformat(),
+            "expires_at": (now + timedelta(minutes=1)).isoformat(),
+            **overrides,
+        }
+
+    def test_no_legacy_open_gate(self):
         gate = AuthorizationGate(require_authorization=False)
-        d = gate.check_target("8.8.8.8", mode="full")
-        assert d.allowed is True
-        assert "legacy" in d.reason or "no authorization" in d.reason
+        assert gate.check_target("fixture.invalid").allowed is False
 
     def test_require_authz_denies_without_file(self):
-        gate = AuthorizationGate(require_authorization=True)
-        d = gate.check_target("127.0.0.1", mode="quick")
-        assert d.allowed is False
+        assert not AuthorizationGate().check_target("fixture.invalid").allowed
 
     def test_in_scope_cidr(self):
-        gate = AuthorizationGate(
-            data={
-                "authorized": True,
-                "in_scope": ["10.0.0.0/8"],
-                "allowed_modes": ["quick", "full"],
-            }
-        )
-        assert gate.check_target("10.1.2.3", "quick").allowed is True
-        assert gate.check_target("11.0.0.1", "quick").allowed is False
+        gate = AuthorizationGate(data=self.document(in_scope=["192.0.2.0/24"]))
+        assert gate.check_target("192.0.2.1", "quick").allowed
+        assert not gate.check_target("198.51.100.1", "quick").allowed
 
     def test_mode_not_allowed(self):
-        gate = AuthorizationGate(
-            data={
-                "authorized": True,
-                "in_scope": ["127.0.0.1"],
-                "allowed_modes": ["quick"],
-            }
-        )
-        d = gate.check_target("127.0.0.1", mode="chaos")
-        assert d.allowed is False
-        assert "allowed_modes" in d.reason
+        gate = AuthorizationGate(data=self.document(allowed_modes=["quick"]))
+        decision = gate.check_target("fixture.invalid", "full")
+        assert not decision.allowed
+        assert "allowed_modes" in decision.reason
 
     def test_filter_phases(self):
-        gate = AuthorizationGate(
-            data={
-                "authorized": True,
-                "in_scope": ["127.0.0.1"],
-                "denied_phases": ["destruction", "crypto_theft"],
-            }
-        )
-        out = gate.filter_phases(
-            ["recon", "destruction", "exploit", "crypto_theft"]
-        )
-        assert out == ["recon", "exploit"]
+        gate = AuthorizationGate(data=self.document(denied_phases=["destruction", "crypto_theft"]))
+        assert gate.filter_phases(["recon", "destruction", "crypto_theft"]) == ["recon"]
 
-    def test_load_json_file(self):
-        doc = {
-            "authorized": True,
-            "engagement_name": "unit-test",
-            "in_scope": ["192.168.1.0/24"],
-        }
-        with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as f:
-            json.dump(doc, f)
-            path = f.name
-        try:
-            gate = AuthorizationGate(authz_path=path)
-            assert gate.loaded is True
-            assert gate.check_target("192.168.1.50", "full").allowed is True
-            assert gate.check_target("10.0.0.1", "full").allowed is False
-        finally:
-            os.unlink(path)
+    def test_load_json_file(self, tmp_path):
+        path = tmp_path / "scope.json"
+        path.write_text(json.dumps(self.document()))
+        gate = AuthorizationGate(authz_path=str(path))
+        assert gate.loaded
+        assert gate.check_target("fixture.invalid", "quick").allowed
 
     def test_hostname_scope(self):
-        gate = AuthorizationGate(
-            data={
-                "authorized": True,
-                "in_scope": ["lab.local", "*.lab.local"],
-            }
-        )
-        assert gate.check_target("lab.local", "quick").allowed is True
-        assert gate.check_target("app.lab.local", "quick").allowed is True
-        assert gate.check_target("evil.com", "quick").allowed is False
+        gate = AuthorizationGate(data=self.document(in_scope=["*.fixture.invalid"]))
+        assert gate.check_target("app.fixture.invalid", "quick").allowed
+        assert not gate.check_target("elsewhere.invalid", "quick").allowed
+
+    def test_exclusions_still_cover_subdomains(self):
+        gate = AuthorizationGate(data=self.document(
+            in_scope=["*.fixture.invalid"], out_of_scope=["restricted.fixture.invalid"],
+        ))
+        assert not gate.check_target("child.restricted.fixture.invalid", "quick").allowed
 
 
 class TestModePhases:
@@ -97,12 +74,12 @@ class TestModePhases:
         phases = agent.phases_for_mode("quick")
         assert phases == ["recon"]
 
-    def test_chaos_includes_destruction_by_default(self):
+    def test_high_risk_phases_denied_by_default(self):
         from agent.shadow_agent import ShadowAgent
 
         agent = ShadowAgent()
         phases = agent.phases_for_mode("chaos")
-        assert "destruction" in phases
+        assert "destruction" not in phases
         assert "recon" in phases
 
     def test_extra_denied_phases(self):
@@ -128,8 +105,7 @@ class TestChaosAuthzIntegration:
         s.set("STRICT_DIFFICULTY", False)
         eng = ChaosEngine(s)
         result = eng.engage(Target(value="127.0.0.1", name="loopback"), mode="quick")
-        assert result["status"] == "dry_run"
-        assert "recon" in result.get("planned_phases", [])
+        assert result["status"] == "denied"
 
     def test_out_of_scope_denied_with_authz(self):
         from config.settings import Settings

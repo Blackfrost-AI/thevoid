@@ -13,7 +13,7 @@ build-backend = "setuptools.build_meta"
 name = "the-void"
 version = "1.1.0"
 description = "Operator-authorized AI red team — local, auditable, MCP-aware."
-authors = [{ name = "Blackfrost AI", email = "void@thevoid.local" }]
+authors = [{ name = "Blackfrost AI" }]
 requires-python = ">=3.10"
 license = { text = "Proprietary" }
 # Dependencies are authoritative in setup.py and mirrored in requirements.txt.

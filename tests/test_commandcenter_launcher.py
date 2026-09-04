@@ -60,3 +60,16 @@ def test_health_check_requires_command_center_identity():
     )
     with patch.object(launcher.urllib.request, "urlopen", return_value=response):
         assert launcher._health_ok(7070) is True
+
+    response.read.return_value = (
+        b'{"ok": true, "service": "the-void-command-center", "port": 7070, "degraded": ["boneyard"]}'
+    )
+    with patch.object(launcher.urllib.request, "urlopen", return_value=response):
+        assert launcher._health_ok(7070) is False
+
+
+def test_status_returns_failure_for_degraded_process():
+    with patch.object(launcher, "_read_record", return_value={"pid": 123, "port": 7070}), \
+         patch.object(launcher, "_process_matches", return_value=True), \
+         patch.object(launcher, "_health_ok", return_value=False):
+        assert launcher.status() == 1

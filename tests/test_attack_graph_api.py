@@ -68,6 +68,8 @@ class TestAttackGraphEndpoint:
         b._boneyard = empty
         app = create_app()
         with TestClient(app, base_url="http://127.0.0.1:7070") as c:
+            from commandcenter.session import access_token
+            c.headers["Authorization"] = "Bearer " + access_token(7070)
             r = c.get("/api/attack-graph")
             assert r.status_code == 200
             j = r.json()
@@ -81,6 +83,8 @@ class TestAttackGraphEndpoint:
         b._boneyard = seeded_boneyard
         app = create_app()
         with TestClient(app, base_url="http://127.0.0.1:7070") as c:
+            from commandcenter.session import access_token
+            c.headers["Authorization"] = "Bearer " + access_token(7070)
             r = c.get("/api/attack-graph")
             assert r.status_code == 200
             j = r.json()
@@ -99,6 +103,8 @@ class TestAttackGraphEndpoint:
         b._boneyard = seeded_boneyard
         app = create_app()
         with TestClient(app, base_url="http://127.0.0.1:7070") as c:
+            from commandcenter.session import access_token
+            c.headers["Authorization"] = "Bearer " + access_token(7070)
             r = c.get(f"/api/attack-graph?host_id={host}")
             assert r.status_code == 200
             assert len(r.json()["nodes"]) == 2

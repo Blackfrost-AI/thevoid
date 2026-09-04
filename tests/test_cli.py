@@ -135,144 +135,76 @@ class TestVersionCommand:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 class TestStatusCommand:
-    """Tests for ``thevoid status``."""
+    """Status reports persisted evidence without implying a live attachment."""
 
     def test_status_default_panel(self, runner):
-        engine = _mock_engine(status={
-            "engaged": True, "targets": ["10.0.0.1", "10.0.0.2"],
-            "stealth_active": True, "warlog_entries": 42,
-            "attack_log": 7, "stolen_data": 3,
-            "active_sessions": ["s1"], "beacons": ["b1"],
-        })
-        with patch("cli.app._make_engine", return_value=engine):
+        observer = MagicMock()
+        observer.degraded = []
+        observer.get_status.return_value = {"warlog_entries": 42, "attack_log": 7}
+        with patch("cli.app._make_evidence_bridge", return_value=observer), patch("cli.app._make_engine") as engine:
             result = runner.invoke(cli, ["status"])
         assert result.exit_code == 0
-        assert "Engaged" in result.output
-        assert "YES" in result.output
+        assert "current activity is unknown" in result.output
         assert "42" in result.output
-        assert "10.0.0.1" in result.output
-
-    def test_status_not_engaged(self, runner):
-        engine = _mock_engine(status={
-            "engaged": False, "targets": [], "stealth_active": False,
-            "warlog_entries": 0, "attack_log": 0, "stolen_data": 0,
-            "active_sessions": [], "beacons": [],
-        })
-        with patch("cli.app._make_engine", return_value=engine):
-            result = runner.invoke(cli, ["status"])
-        assert result.exit_code == 0
-        assert "NO" in result.output
+        engine.assert_not_called()
 
     def test_status_json_output(self, runner):
-        status = {
-            "engaged": True, "targets": ["x"], "stealth_active": False,
-            "warlog_entries": 5, "attack_log": 2, "stolen_data": 1,
-            "active_sessions": [], "beacons": [],
-        }
-        engine = _mock_engine(status=status)
-        with patch("cli.app._make_engine", return_value=engine):
+        observer = MagicMock()
+        observer.degraded = []
+        observer.get_status.return_value = {"warlog_entries": 5, "attack_log": 2}
+        with patch("cli.app._make_evidence_bridge", return_value=observer):
             result = runner.invoke(cli, ["status", "--json-output"])
         assert result.exit_code == 0
-        data = json.loads(result.output.strip())
-        assert data["engaged"] is True
+        data = json.loads(result.output)
+        assert data["state_source"] == "recorded_evidence"
+        assert data["runtime_state"] == "not_attached"
+        assert data["recorded_engagements"] == 2
         assert data["warlog_entries"] == 5
 
-    def test_status_falls_back_to_agent_status(self, runner):
-        """If engine.get_status() raises, status falls back to agent."""
-        engine = _mock_engine(status={"engaged": False, "targets": []})
-        engine.get_status.side_effect = RuntimeError("boom")
-        engine.agent.get_status.return_value = {
-            "engaged": True, "targets": ["fallback"],
-            "stealth_active": False, "warlog_entries": 1,
-            "attack_log": 0, "stolen_data": 0,
-            "active_sessions": [], "beacons": [],
-        }
-        with patch("cli.app._make_engine", return_value=engine):
+    def test_degraded_status_is_nonzero(self, runner):
+        observer = MagicMock()
+        observer.degraded = ["boneyard"]
+        observer.get_status.return_value = {}
+        with patch("cli.app._make_evidence_bridge", return_value=observer):
             result = runner.invoke(cli, ["status"])
-        assert result.exit_code == 0
-        assert "fallback" in result.output
+        assert result.exit_code == 1
+        assert "degraded" in result.output
 
-
-# ═══════════════════════════════════════════════════════════════════════════════
-#  targets
-# ═══════════════════════════════════════════════════════════════════════════════
 
 class TestTargetsCommand:
-    """Tests for ``thevoid targets``."""
+    """Recorded hosts are an evidence view, not an in-memory edit interface."""
 
     def test_targets_empty_list(self, runner):
-        engine = _mock_engine()
-        with patch("cli.app._make_engine", return_value=engine):
+        observer = MagicMock()
+        observer.degraded = []
+        observer.query_hosts.return_value = []
+        with patch("cli.app._make_evidence_bridge", return_value=observer):
             result = runner.invoke(cli, ["targets"])
         assert result.exit_code == 0
-        assert "No targets" in result.output or "no targets" in result.output.lower()
+        assert "Recorded hosts" in result.output
 
     def test_targets_list_existing(self, runner):
-        from core.target import Target
-        t1 = Target(value="10.0.0.1", name="web-1")
-        t2 = Target(value="example.com", name="web-2")
-        engine = _mock_engine()
-        engine.agent.targets = [t1, t2]
-        with patch("cli.app._make_engine", return_value=engine):
+        observer = MagicMock()
+        observer.degraded = []
+        observer.query_hosts.return_value = [
+            {"hostname": "fixture.invalid", "ip_address": "192.0.2.1"},
+        ]
+        with patch("cli.app._make_evidence_bridge", return_value=observer), patch("cli.app._make_engine") as engine:
             result = runner.invoke(cli, ["targets"])
         assert result.exit_code == 0
-        assert "web-1" in result.output
-        assert "web-2" in result.output
-        assert "10.0.0.1" in result.output
+        assert "fixture.invalid" in result.output
+        engine.assert_not_called()
 
-    def test_targets_add(self, runner):
-        engine = _mock_engine()
-        with patch("cli.app._make_engine", return_value=engine):
-            result = runner.invoke(cli, ["targets", "--add", "10.0.0.5"])
-        assert result.exit_code == 0
-        assert "Added" in result.output or "added" in result.output.lower()
-        engine.agent.add_target.assert_called_once()
-        added = engine.agent.add_target.call_args[0][0]
-        assert added.value == "10.0.0.5"
-
-    def test_targets_add_multiple(self, runner):
-        engine = _mock_engine()
-        with patch("cli.app._make_engine", return_value=engine):
-            result = runner.invoke(cli, [
-                "targets", "--add", "10.0.0.5", "--add", "10.0.0.6",
-            ])
-        assert result.exit_code == 0
-        assert engine.agent.add_target.call_count == 2
-
-    def test_targets_remove(self, runner):
-        from core.target import Target
-        t = Target(value="10.0.0.5", name="10.0.0.5")
-        engine = _mock_engine()
-        engine.agent.get_target.return_value = t
-        engine.agent.targets = [t]
-        with patch("cli.app._make_engine", return_value=engine):
-            result = runner.invoke(cli, ["targets", "--remove", "10.0.0.5"])
-        assert result.exit_code == 0
-        assert "Removed" in result.output or "removed" in result.output.lower()
-        engine.agent.remove_target.assert_called_once_with(t)
-
-    def test_targets_remove_not_found(self, runner):
-        engine = _mock_engine()
-        engine.agent.get_target.return_value = None
-        with patch("cli.app._make_engine", return_value=engine):
-            result = runner.invoke(cli, ["targets", "--remove", "ghost"])
-        assert result.exit_code == 0
-        assert "not found" in result.output.lower()
-
-    def test_targets_clear(self, runner):
-        from core.target import Target
-        engine = _mock_engine()
-        engine.agent.targets = [Target(value="1.2.3.4")]
-        with patch("cli.app._make_engine", return_value=engine):
-            result = runner.invoke(cli, ["targets", "--clear"])
-        assert result.exit_code == 0
-        assert "Cleared" in result.output or "cleared" in result.output.lower()
-        assert len(engine.agent.targets) == 0
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
-#  report
-# ═══════════════════════════════════════════════════════(***)══════════════════
+    @pytest.mark.parametrize("arguments", [
+        ["--add", "fixture.invalid"], ["--remove", "fixture.invalid"], ["--clear"],
+    ])
+    def test_target_edits_are_explicitly_rejected(self, runner, arguments):
+        with patch("cli.app._make_engine") as engine, patch("cli.app._make_evidence_bridge") as observer:
+            result = runner.invoke(cli, ["targets", *arguments])
+        assert result.exit_code == 2
+        assert "did not persist" in result.output
+        engine.assert_not_called()
+        observer.assert_not_called()
 
 class TestReportCommand:
     """Tests for ``thevoid report``."""

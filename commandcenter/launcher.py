@@ -19,6 +19,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from config.paths import get_runtime_paths
+from commandcenter.session import browser_bootstrap
 
 PROCESS_MARKER = "commandcenter.backend.main"
 
@@ -138,6 +139,7 @@ def _health_ok(port: int, timeout: float = 0.75) -> bool:
                 and body.get("ok") is True
                 and body.get("service") == "the-void-command-center"
                 and body.get("port") == port
+                and not body.get("degraded")
             )
     except (OSError, ValueError, urllib.error.URLError, json.JSONDecodeError):
         return False
@@ -185,7 +187,7 @@ def start(*, open_browser: bool = True, wait_seconds: float = 15.0) -> int:
             url = f"http://127.0.0.1:{port}/"
             print(f"THE VOID Command Center is ready at {url}")
             if open_browser:
-                webbrowser.open(url, new=2)
+                webbrowser.open(browser_bootstrap(port), new=2)
             return 0
         if not _process_matches(pid):
             with _launcher_lock():
@@ -245,9 +247,10 @@ def status() -> int:
         print("Command Center: stopped")
         return 1
     port = int(record.get("port", _port()))
-    state = "healthy" if _health_ok(port) else "starting or degraded"
+    healthy = _health_ok(port)
+    state = "healthy" if healthy else "starting or degraded"
     print(f"Command Center: {state} (pid {record['pid']}, {_health_url(port)})")
-    return 0
+    return 0 if healthy else 1
 
 
 def open_ui() -> int:
@@ -261,7 +264,7 @@ def open_ui() -> int:
     if not _health_ok(port):
         print("Command Center is not healthy yet.", file=sys.stderr)
         return 1
-    webbrowser.open(f"http://127.0.0.1:{port}/", new=2)
+    webbrowser.open(browser_bootstrap(port), new=2)
     return 0
 
 
@@ -294,7 +297,7 @@ def main(argv: list[str] | None = None) -> int:
             return status()
         if command == "open":
             return open_ui()
-    except RuntimeError as exc:
+    except (RuntimeError, OSError, ValueError) as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 2
     return 2

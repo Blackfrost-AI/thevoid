@@ -1,7 +1,9 @@
 {
   "engagement_name": "Fictional Local Lab — Authorized Assessment",
   "operator": "demo-operator",
-  "authorized": true,
+  "authorized": false,
+  "not_before": "2020-01-01T00:00:00Z",
+  "expires_at": "2020-01-02T00:00:00Z",
   "allow_out_of_scope": false,
   "in_scope": [
     "127.0.0.1",
@@ -20,5 +22,5 @@
     "zero_click",
     "wireless_iot"
   ],
-  "notes": "Fictional documentation ranges and localhost only. Use with --profile demo."
+  "notes": "Intentionally inactive schema example, not permission to contact any system. Use the network-free browser demo for demonstrations."
 }

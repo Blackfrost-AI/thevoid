@@ -38,6 +38,7 @@ from commandcenter.backend.services.bridge import get_bridge
 from commandcenter.backend.services.poller import EventPoller
 from commandcenter.backend.ws.hub import websocket_endpoint
 from core.licensing import enforce_license_if_required
+from commandcenter.session import access_token, token_matches
 
 try:
     from commandcenter import __version__ as _CC_VERSION
@@ -55,10 +56,25 @@ def create_app() -> FastAPI:
     license_status = enforce_license_if_required(required_feature="command-center")
     settings = load_settings()
     poller: EventPoller | None = None
+    session_token: str | None = None
+
+    def token() -> str:
+        nonlocal session_token
+        if session_token is None:
+            session_token = access_token(settings.port, create=True)
+        return session_token
+
+    def authenticated(request: Request) -> bool:
+        authorization = request.headers.get("authorization", "")
+        return authorization.startswith("Bearer ") and token_matches(token(), authorization[7:])
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         nonlocal poller
+        from commandcenter.launcher import _ensure_unprivileged
+
+        _ensure_unprivileged()
+        token()
         # Eager-init bridge so first request is fast
         bridge = get_bridge()
         logger.info(
@@ -110,6 +126,13 @@ def create_app() -> FastAPI:
     async def protect_local_browser_boundary(request: Request, call_next):
         """Block cross-site mutations and add browser hardening headers."""
         origin = request.headers.get("origin")
+        if request.url.path.startswith("/api/") and request.url.path != "/api/health":
+            if request.method != "OPTIONS" and not authenticated(request):
+                return JSONResponse(
+                    {"detail": "Local operator authentication required. Open the UI from the desktop launcher."},
+                    status_code=401,
+                    headers={"WWW-Authenticate": "Bearer", "Cache-Control": "no-store"},
+                )
         if (
             request.method in {"POST", "PUT", "PATCH", "DELETE"}
             and origin
@@ -124,6 +147,7 @@ def create_app() -> FastAPI:
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["Referrer-Policy"] = "no-referrer"
+        response.headers["Cache-Control"] = "no-store"
         response.headers["Permissions-Policy"] = (
             "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
         )
@@ -148,24 +172,36 @@ def create_app() -> FastAPI:
     app.include_router(demo.router)
 
     @app.get("/api/health")
-    async def health():
+    async def health(request: Request):
         bridge = get_bridge()
-        return {
-            "ok": True,
+        ready = not bridge.degraded
+        payload = {
+            "ok": ready,
+            "ready": ready,
             "service": "the-void-command-center",
             "host": settings.host,
             "port": settings.port,
             "degraded": bridge.degraded,
-            "license": license_status.public_dict(),
         }
+        if authenticated(request):
+            payload["license"] = license_status.public_dict()
+        return JSONResponse(payload, status_code=200 if ready else 503)
+
+    @app.get("/api/session")
+    async def session():
+        return {"authenticated": True}
 
     @app.websocket("/ws/live")
     async def ws_live(websocket: WebSocket):
+        protocols = websocket.scope.get("subprotocols", [])
+        if len(protocols) != 2 or protocols[0] != "void-session" or not token_matches(token(), protocols[1]):
+            await websocket.close(code=1008, reason="Local operator authentication required")
+            return
         origin = websocket.headers.get("origin")
         if origin and origin not in allowed_origins:
             await websocket.close(code=1008, reason="Origin not allowed")
             return
-        await websocket_endpoint(websocket)
+        await websocket_endpoint(websocket, subprotocol="void-session")
 
     # Production: serve frontend static build if present
     static_dir = settings.static_dir
@@ -220,6 +256,7 @@ def main() -> None:
         host=settings.host,
         port=settings.port,
         reload=False,
+        ws="wsproto",
         log_level="info",
     )
 

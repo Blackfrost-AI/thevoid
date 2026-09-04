@@ -39,8 +39,8 @@ class ConnectionManager:
     def client_count(self) -> int:
         return len(self._clients)
 
-    async def connect(self, websocket: WebSocket) -> None:
-        await websocket.accept()
+    async def connect(self, websocket: WebSocket, subprotocol: str | None = None) -> None:
+        await websocket.accept(subprotocol=subprotocol)
         async with self._lock:
             # Default subscription: all channels
             self._clients[websocket] = set(self.VALID_CHANNELS)
@@ -88,7 +88,7 @@ class ConnectionManager:
 hub = ConnectionManager()
 
 
-async def websocket_endpoint(websocket: WebSocket) -> None:
+async def websocket_endpoint(websocket: WebSocket, subprotocol: str | None = None) -> None:
     """Handle /ws/live connections."""
     # Validate Origin header against allowed CORS origins
     origin = websocket.headers.get("origin")
@@ -98,7 +98,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
             logger.warning("WS rejected: origin %s not allowed", origin)
             await websocket.close(code=1008)
             return
-    await hub.connect(websocket)
+    await hub.connect(websocket, subprotocol=subprotocol)
     # Initial hello
     await hub.send_personal(
         websocket,

@@ -254,6 +254,8 @@ def test_demo_router_endpoints():
     poller_mod.EventPoller = _StubPoller
     try:
         client = TestClient(app, base_url="http://127.0.0.1:7070")
+        from commandcenter.session import access_token
+        client.headers["Authorization"] = "Bearer " + access_token(7070, create=True)
         r = client.get("/api/demo")
         assert r.status_code == 200
         assert r.json().get("demo_mode") is False, r.json()

@@ -50,6 +50,8 @@ def client(stores):
 
     app = create_app()
     with TestClient(app, base_url="http://127.0.0.1:7070") as c:
+        from commandcenter.session import access_token
+        c.headers["Authorization"] = "Bearer " + access_token(7070)
         yield c
 
 

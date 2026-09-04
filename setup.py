@@ -11,7 +11,6 @@ setup(
     version="1.1.0",
     description="Operator-authorized AI red team — local, auditable, MCP-aware",
     author="Blackfrost AI",
-    author_email="void@thevoid.local",
     url="https://github.com/Blackfrost-AI/void_client",
     license="Proprietary",
     license_files=("LICENSE",),
@@ -41,7 +40,8 @@ setup(
         "tqdm>=4.66.0",
         "colorama>=0.4.6",
         "fastapi>=0.110.0",
-        "uvicorn[standard]>=0.27.0",
+        "uvicorn>=0.27.0",
+        "wsproto>=1.3.2",
         "pydantic>=2.0.0",
     ],
     extras_require={

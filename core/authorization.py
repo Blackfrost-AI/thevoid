@@ -24,9 +24,9 @@ Authorization file format (JSON or YAML)::
       "notes": "Lab only — no production systems."
     }
 
-If no authorization file is configured, the gate is open (legacy behavior)
-unless CLIENT_MODE / require_authorization is enabled, in which case engage
-is denied until a file is provided.
+Missing authorization always fails closed. Documents require explicit consent,
+operator identity, scope, modes, and a timezone-aware validity window. The old
+require_authorization argument is accepted only for source compatibility.
 """
 
 from __future__ import annotations
@@ -37,6 +37,7 @@ import logging
 import os
 import re
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Sequence
 from urllib.parse import urlparse
 
@@ -123,7 +124,7 @@ def _ip_in_networks(ip_str: str, networks: Sequence[str]) -> Optional[str]:
     return None
 
 
-def _hostname_matches(host: str, patterns: Sequence[str]) -> Optional[str]:
+def _hostname_matches(host: str, patterns: Sequence[str], *, deny_subdomains: bool = False) -> Optional[str]:
     host_l = host.lower().rstrip(".")
     for pat in patterns:
         p = pat.strip().lower()
@@ -131,7 +132,7 @@ def _hostname_matches(host: str, patterns: Sequence[str]) -> Optional[str]:
             continue
         if p.startswith("http://") or p.startswith("https://"):
             p = _host_from_target(p).lower()
-        if host_l == p or host_l.endswith("." + p):
+        if host_l == p or (deny_subdomains and host_l.endswith("." + p)):
             return pat
         # simple glob: *.example.com
         if p.startswith("*."):
@@ -147,11 +148,11 @@ class AuthorizationGate:
     def __init__(
         self,
         authz_path: Optional[str] = None,
-        require_authorization: bool = False,
+        require_authorization: bool = True,
         data: Optional[Dict[str, Any]] = None,
     ):
         self.authz_path = authz_path
-        self.require_authorization = require_authorization
+        self.require_authorization = True
         self._data: Optional[Dict[str, Any]] = data
         if data is None and authz_path and os.path.isfile(authz_path):
             self._data = _load_raw(authz_path)
@@ -172,18 +173,14 @@ class AuthorizationGate:
         data = self._data
 
         if data is None:
-            if self.require_authorization:
-                return AuthzDecision(
-                    allowed=False,
-                    reason=(
-                        "CLIENT_MODE requires an authorization file "
-                        "(--authz / AUTHORIZATION_FILE). Engagement denied."
-                    ),
-                )
             return AuthzDecision(
-                allowed=True,
-                reason="no authorization file configured — gate open (legacy)",
+                allowed=False,
+                reason="A valid authorization file is required. Engagement denied.",
             )
+
+        error = self._validation_error(data)
+        if error:
+            return AuthzDecision(allowed=False, reason=error)
 
         engagement = str(data.get("engagement_name", "") or "")
         operator = str(data.get("operator", "") or "")
@@ -216,7 +213,7 @@ class AuthorizationGate:
         host = _host_from_target(target_value)
         # Explicit out-of-scope first
         oos_ip = _ip_in_networks(host, out_of_scope) if host else None
-        oos_host = _hostname_matches(host, out_of_scope) if host else None
+        oos_host = _hostname_matches(host, out_of_scope, deny_subdomains=True) if host else None
         if oos_ip or oos_host:
             return AuthzDecision(
                 allowed=False,
@@ -292,9 +289,39 @@ class AuthorizationGate:
             allowed_modes=allowed_modes,
         )
 
+    @staticmethod
+    def _validation_error(data: Any) -> Optional[str]:
+        if not isinstance(data, dict):
+            return "Authorization must be an object."
+        if data.get("authorized") is not True:
+            return "Authorization requires authorized=true (a JSON boolean)."
+        for key in ("operator", "engagement_name"):
+            if not isinstance(data.get(key), str) or not data[key].strip():
+                return f"Authorization requires {key}."
+        for key in ("in_scope", "allowed_modes", "out_of_scope", "denied_phases"):
+            values = data.get(key, [])
+            if not isinstance(values, list) or not all(
+                isinstance(value, str) and value.strip() for value in values
+            ):
+                return f"Authorization {key} must be a list of nonempty strings."
+            if key in {"in_scope", "allowed_modes"} and not values:
+                return f"Authorization requires nonempty {key}."
+        if data.get("allow_out_of_scope", False) is not False:
+            return "Out-of-scope authorization overrides are not permitted."
+        try:
+            start = datetime.fromisoformat(data["not_before"].replace("Z", "+00:00"))
+            end = datetime.fromisoformat(data["expires_at"].replace("Z", "+00:00"))
+            if start.tzinfo is None or end.tzinfo is None or start >= end:
+                raise ValueError("invalid interval")
+        except (KeyError, ValueError, TypeError, AttributeError):
+            return "Authorization requires a valid timezone-aware not_before/expires_at window."
+        if not start <= datetime.now(timezone.utc) < end:
+            return "Authorization is expired or not yet valid."
+        return None
+
     def filter_phases(self, phases: Sequence[str]) -> List[str]:
         """Remove denied phases from a planned phase list."""
-        if not self._data:
-            return list(phases)
+        if self._validation_error(self._data):
+            return []
         denied = {str(p) for p in (self._data.get("denied_phases") or [])}
         return [p for p in phases if p not in denied]

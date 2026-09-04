@@ -97,6 +97,13 @@ def _make_target(value: str):
     return Target(value=value, name=value)
 
 
+def _make_evidence_bridge(settings: Settings):
+    """Initialize only the evidence observer, never an active agent runtime."""
+    from commandcenter.backend.services.bridge import ServiceBridge
+
+    return ServiceBridge(settings=settings)
+
+
 def _project_root() -> str:
     return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -115,12 +122,18 @@ def _settings_from_options(
     settings = Settings()
     settings._load_defaults()
 
+    def load_config(path: str) -> None:
+        try:
+            settings.load_file(path)
+        except ValueError as exc:
+            raise click.BadParameter(str(exc), param_hint="--config") from exc
+
     if profile == "demo" or profile == "client":
         demo_cfg = os.path.join(
             _project_root(), "config", "examples", "demo_profile.json"
         )
         if os.path.isfile(demo_cfg):
-            settings.load_file(demo_cfg)
+            load_config(demo_cfg)
         settings.set("CLIENT_MODE", True)
         settings.set("STRICT_DIFFICULTY", True)
         settings.set("REQUIRE_AUTHORIZATION", True)
@@ -133,7 +146,7 @@ def _settings_from_options(
             )
 
     if config:
-        settings.load_file(config)
+        load_config(config)
     if authz:
         settings.set("AUTHORIZATION_FILE", authz)
         settings.set("REQUIRE_AUTHORIZATION", True)
@@ -556,8 +569,14 @@ def report(fmt, output, operator, name, verify_integrity, export_sinks, export_u
     from core.warlog import WarLog
     from core.boneyard import Boneyard
 
-    warlog = WarLog()
-    boneyard = Boneyard()
+    from modules.evidence_reports import recorded_engagements
+
+    try:
+        warlog = WarLog(log_dir=settings.get("WARLOG_DIR"), log_file=settings.get("LOG_FILE"), rotate_on_init=False)
+        boneyard = Boneyard(storage_dir=settings.get("BONEYARD_DIR"))
+        recorded = recorded_engagements(boneyard)
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise click.ClickException(str(exc)) from exc
 
     # W4-2.3c: integrity verification is O(n) PBKDF2 work — show a live
     # progress bar when verifying, unless the report itself is being
@@ -596,7 +615,7 @@ def report(fmt, output, operator, name, verify_integrity, export_sinks, export_u
     reporter = Reporter(
         warlog=warlog,
         boneyard=boneyard,
-        attack_log=[],
+        attack_log=recorded,
         operator=operator,
         engagement_name=name,
         verify_integrity=verify_integrity,
@@ -646,7 +665,9 @@ def report(fmt, output, operator, name, verify_integrity, export_sinks, export_u
                 logger.error("Export to %s failed: %s", s.name, exc)
                 ok = False
             sent.append((s.name, ok))
-        console.print(f"[green][+][/green] Export attempt: {sent}")
+        click.echo(f"Export results: {sent}", err=True)
+        if any(not ok for _, ok in sent):
+            raise click.ClickException("One or more report exports failed.")
 
 
 # ─── targets ──────────────────────────────────────────────────────────────────
@@ -661,31 +682,19 @@ def report(fmt, output, operator, name, verify_integrity, export_sinks, export_u
               help="List all targets (default action).")
 @click.option("--config", "-c", type=click.Path(), help="Config file path.")
 def targets(add_targets, remove_targets, clear, list_flag, config):
-    """Manage the target list.
-
-    Add, remove, or list targets. Targets are stored in the active agent.
-    """
+    """List recorded hosts. This command does not manage an active target set."""
     settings = _settings_from_options(config)
-    engine = _make_engine(settings, quiet=True)
-
-    if clear:
-        engine.agent.targets.clear()
-        console.print("[yellow][*][/yellow] Cleared all targets")
-
-    for t in add_targets:
-        engine.agent.add_target(_make_target(t))
-        console.print(f"[green][+][/green] Added target: {t}")
-
-    for t_name in remove_targets:
-        target_obj = engine.agent.get_target(t_name)
-        if target_obj:
-            engine.agent.remove_target(target_obj)
-            console.print(f"[yellow][-][/yellow] Removed target: {t_name}")
-        else:
-            console.print(f"[red][!][/red] Target not found: {t_name}")
-
-    if list_flag or (not add_targets and not remove_targets and not clear):
-        _render_targets(engine)
+    if add_targets or remove_targets or clear:
+        raise click.UsageError("Target edits were process-local and did not persist. This command now only lists recorded hosts.")
+    bridge = _make_evidence_bridge(settings)
+    if bridge.degraded:
+        raise click.ClickException("Recorded evidence is unavailable: " + ", ".join(bridge.degraded))
+    table = Table(title="Recorded hosts — not an active target list")
+    table.add_column("Host")
+    table.add_column("Recorded address")
+    for host in bridge.query_hosts():
+        table.add_row(str(host.get("hostname") or "—"), str(host.get("ip_address") or "—"))
+    console.print(table)
 
 
 def _render_targets(engine) -> None:
@@ -810,87 +819,38 @@ def _status_enrich(engine, st: Dict[str, Any]) -> Dict[str, Any]:
 @click.option("--json-output", "json_out", is_flag=True,
               help="Output status as JSON.")
 def status(config, json_out):
-    """Show the current status of the agent/engine."""
+    """Show recorded evidence status; a separate live process is not attached."""
     settings = _settings_from_options(config=config)
-    engine = _make_engine(settings, quiet=True)
-
-    try:
-        st = engine.get_status()
-    except Exception:
-        st = engine.agent.get_status()
-
-    extra = _status_enrich(engine, st)
-
+    bridge = _make_evidence_bridge(settings)
+    st = bridge.get_status()
+    payload = {
+        "schema": "thevoid.status.v1",
+        "state_source": "recorded_evidence",
+        "runtime_state": "not_attached",
+        "recorded_targets": st.get("targets", []),
+        "target_count": st.get("target_count", 0),
+        "recorded_engagements": st.get("attack_log", 0),
+        "findings_count": st.get("boneyard_items", 0),
+        "warlog_entries": st.get("warlog_entries", 0),
+        "degraded": list(bridge.degraded),
+    }
     if json_out:
-        merged = dict(st) if isinstance(st, dict) else {"status": st}
-        merged.update({k: v for k, v in extra.items() if v is not None})
-        click.echo(json.dumps(merged, indent=2, default=str))
-        return
-
-    panel_content = []
-    engaged = st.get("engaged", False)
-    panel_content.append(
-        f"[{'green' if engaged else 'red'}]Engaged:[/] "
-        f"{'YES' if engaged else 'NO'}"
-    )
-
-    targets = st.get("targets", [])
-    panel_content.append(f"Targets: [bold]{len(targets)}[/]")
-    if targets:
-        panel_content.append("  " + ", ".join(targets))
-
-    stealth = st.get("stealth_active", False)
-    panel_content.append(
-        f"[{'green' if stealth else 'dim'}]Stealth:[/] "
-        f"{'ACTIVE' if stealth else 'inactive'}"
-    )
-
-    panel_content.append(f"WarLog entries: {st.get('warlog_entries', 0)}")
-    panel_content.append(f"Attacks logged: {st.get('attack_log', 0)}")
-
-    stolen = st.get("stolen_data", 0)
-    panel_content.append(f"Stolen data items: {stolen}")
-
-    sessions = st.get("active_sessions", [])
-    panel_content.append(f"Active sessions: {len(sessions)}")
-
-    beacons = st.get("beacons", [])
-    panel_content.append(f"Beacons: {len(beacons)}")
-
-    # ── W4-2.3b enrichment block ──
-    prevention = extra.get("prevention")
-    if prevention:
-        panel_content.append(
-            f"Prevention score: [bold red]{prevention.get('score')}[/] "
-            f"({prevention.get('engagement_count')} engagements)"
-        )
-
-    scenario = extra.get("scenario")
-    if scenario:
-        panel_content.append(f"Scenario: [cyan]{scenario}[/]")
-
-    drift = extra.get("last_drift")
-    if drift:
-        when = drift.get("when")
-        panel_content.append(
-            f"Last drift: [yellow]{drift.get('msg')}[/]"
-            + (f" [dim]@ {when}[/]" if when else "")
-        )
-
-    integrity = extra.get("integrity")
-    if integrity:
-        parts = []
-        for name, ok in integrity.items():
-            parts.append(
-                f"[green]{name} ✓[/]" if ok else f"[red]{name} ✗[/]"
-            )
-        panel_content.append("Integrity: " + "  ".join(parts))
-
-    console.print(Panel(
-        "\n".join(panel_content),
-        title="[bold red]THE VOID — Status[/]",
-        border_style="red",
-    ))
+        click.echo(json.dumps(payload, indent=2))
+    else:
+        console.print(Panel(
+            "\n".join([
+                "Source: recorded local evidence",
+                "Live runtime: not attached (current activity is unknown)",
+                f"Recorded hosts: {payload['target_count']}",
+                f"Recorded engagements: {payload['recorded_engagements']}",
+                f"Findings: {payload['findings_count']}",
+                f"WarLog entries: {payload['warlog_entries']}",
+            ]),
+            title="THE VOID — Evidence status",
+            border_style="red",
+        ))
+    if bridge.degraded:
+        raise click.ClickException("Evidence status is degraded: " + ", ".join(bridge.degraded))
 
 
 # ─── license ──────────────────────────────────────────────────────────────────

@@ -5,6 +5,7 @@
   "CLIENT_MODE": true,
   "STRICT_DIFFICULTY": true,
   "REQUIRE_AUTHORIZATION": true,
+  "DRY_RUN": true,
   "AUTHORIZATION_FILE": "config/examples/authorization.demo.json",
   "DEFAULT_ENGAGE_MODE": "quick",
   "DENY_HIGH_RISK_PHASES": true,

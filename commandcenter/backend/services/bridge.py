@@ -30,7 +30,8 @@ class ServiceBridge:
     services rather than crashing the API process.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, settings: Any = None) -> None:
+        self._settings = settings
         self.degraded: List[str] = []
         self._boneyard: Any = None
         self._warlog: Any = None
@@ -52,7 +53,9 @@ class ServiceBridge:
         try:
             from core.boneyard import Boneyard
 
-            self._boneyard = Boneyard()
+            self._boneyard = Boneyard(
+                storage_dir=self._settings.get("BONEYARD_DIR") if self._settings else None
+            )
         except Exception as exc:  # pragma: no cover — defensive
             logger.exception("Boneyard unavailable: %s", exc)
             self.degraded.append("boneyard")
@@ -60,7 +63,11 @@ class ServiceBridge:
         try:
             from core.warlog import WarLog
 
-            self._warlog = WarLog()
+            self._warlog = WarLog(
+                log_dir=self._settings.get("WARLOG_DIR") if self._settings else None,
+                log_file=self._settings.get("LOG_FILE") if self._settings else None,
+                rotate_on_init=False,
+            )
         except Exception as exc:  # pragma: no cover
             logger.exception("WarLog unavailable: %s", exc)
             self.degraded.append("warlog")
@@ -737,18 +744,15 @@ class ServiceBridge:
         seen: set[str] = set()
         if self._boneyard is not None:
             try:
-                categories = list(self._boneyard.categories() or [])
-                for category in sorted(c for c in categories if c.startswith("attack_")):
-                    for row in self._boneyard.search(category=category, limit=500) or []:
-                        payload = row.get("data")
-                        if not isinstance(payload, dict):
-                            continue
-                        key = json.dumps(payload, sort_keys=True, default=str)
-                        if key not in seen:
-                            seen.add(key)
-                            payloads.append(payload)
+                from modules.evidence_reports import recorded_engagements
+
+                payloads = recorded_engagements(self._boneyard)
+                seen.update(json.dumps(p, sort_keys=True, default=str) for p in payloads)
             except Exception as exc:
                 logger.warning("attack log reconstruction failed: %s", exc)
+                if "recorded_reports" not in self.degraded:
+                    self.degraded.append("recorded_reports")
+                raise RuntimeError("Recorded reports are unavailable; refusing incomplete totals.") from exc
 
         if self._chaos is not None and not self._demo_active:
             agent = getattr(self._chaos, "agent", None)

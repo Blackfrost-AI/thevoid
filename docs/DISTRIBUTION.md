@@ -1,5 +1,10 @@
 # Private Commercial Distribution
 
+> **Release hold:** this document describes the intended delivery architecture,
+> not a commissioned release. The installer still needs transactional entitlement
+> validation and clean-Kali lifecycle acceptance. A monitored `VOID_SUPPORT_EMAIL`
+> and named release reviewer must be confirmed. See [HARDENING_HANDOFF.md](HARDENING_HANDOFF.md).
+
 ## Decision
 
 Ship THE VOID as one customer-specific `tar.zst` download containing two

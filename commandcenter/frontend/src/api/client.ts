@@ -1,4 +1,5 @@
 /** REST + WebSocket client for THE VOID Command Center. */
+import { sessionHeaders } from './session'
 
 import type {
   CoverageResponse,
@@ -12,8 +13,8 @@ const API_BASE = ''
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
-    headers: { Accept: 'application/json', ...(init?.headers || {}) },
     ...init,
+    headers: { Accept: 'application/json', ...(init?.headers || {}), ...sessionHeaders() },
   })
   if (!res.ok) {
     const text = await res.text().catch(() => res.statusText)
@@ -23,7 +24,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 async function download(path: string): Promise<Blob> {
-  const res = await fetch(`${API_BASE}${path}`, { headers: { Accept: 'application/json' } })
+  const res = await fetch(`${API_BASE}${path}`, { headers: { Accept: 'application/json', ...sessionHeaders() } })
   if (!res.ok) {
     const text = await res.text().catch(() => res.statusText)
     throw new Error(`${res.status} ${path}: ${text}`)

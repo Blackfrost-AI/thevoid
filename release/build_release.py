@@ -323,7 +323,8 @@ export VOID_REQUIRE_LICENSE={required}
 export VOID_LICENSE_FILE=/etc/blackfrost/the-void/license.json
 export VOID_LICENSE_PUBLIC_KEY=/usr/share/blackfrost/the-void/license-public.pem
 export SNOW_STATE_DIR=/var/lib/blackfrost/the-void/snowblind
-if ! /usr/bin/thevoid license status --feature snowblind --json-output >/dev/null; then
+if ! /opt/blackfrost/the-void/venv/bin/python -I -m core.recovery_guard "$@" && \\
+   ! /usr/bin/thevoid license status --feature snowblind --json-output >/dev/null; then
     echo "Snowblind requires a valid THE VOID license." >&2
     exit 78
 fi
@@ -351,6 +352,9 @@ def _write_control(
     depends: str,
     description: str,
 ) -> None:
+    support_email = os.environ.get("VOID_SUPPORT_EMAIL", "").strip()
+    if not re.fullmatch(r"[A-Za-z0-9._+%-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}", support_email):
+        raise RuntimeError("Set VOID_SUPPORT_EMAIL to an approved, monitored support address before packaging.")
     debian = stage / "DEBIAN"
     debian.mkdir(parents=True, exist_ok=True)
     control = (
@@ -360,8 +364,8 @@ def _write_control(
         "Priority: optional\n"
         f"Architecture: {architecture}\n"
         f"Depends: {depends}\n"
-        "Maintainer: Blackfrost AI <support@blackfrost.ai>\n"
-        "Homepage: https://blackfrost.ai\n"
+        f"Maintainer: Blackfrost AI <{support_email}>\n"
+        "Homepage: https://blackfrostai.com/void\n"
         f"Installed-Size: {_package_size_kib(stage)}\n"
         f"Description: {description}\n"
     )

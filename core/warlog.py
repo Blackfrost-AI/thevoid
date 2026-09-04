@@ -280,7 +280,7 @@ class WarLog:
             log_file: Legacy JSONL file path (kept for backward compat).
                       If None, uses default.
             passphrase: Passphrase for HMAC integrity key derivation.
-                        If None, derives a dev-mode key from DB path + user.
+                        If None, uses a private managed per-store key.
             max_db_size: Max DB size in bytes before rotation (default 50 MB).
             max_age_days: Max age of oldest event in days before rotation (default 7).
             keep_archives: Number of gzipped archives to retain (default 5).
@@ -299,13 +299,19 @@ class WarLog:
         self.max_age_days = max_age_days
         self.keep_archives = keep_archives
 
-        os.makedirs(self.log_dir, exist_ok=True)
+        from core.private_storage import private_directory, private_file, prepare_database, store_passphrase
+
+        if passphrase == "":
+            raise ValueError("An empty integrity passphrase is not permitted.")
+        private_directory(self.log_dir)
         log_parent = os.path.dirname(os.path.abspath(self.log_file))
-        os.makedirs(log_parent, exist_ok=True)
+        os.makedirs(log_parent, mode=0o700, exist_ok=True)
 
         # DB path: warlog.db in the log_dir
         self._db_path = os.path.join(self.log_dir, "warlog.db")
-        self._passphrase = passphrase
+        self._passphrase = passphrase if passphrase is not None else store_passphrase(self._db_path)
+        prepare_database(self._db_path)
+        os.close(private_file(self.log_file))
 
         # Session ID — preserved on original for backward compat
         self._session_id = str(uuid.uuid4())
@@ -336,6 +342,9 @@ class WarLog:
 
     def _init_db(self) -> None:
         """Initialize SQLite database with schema."""
+        from core.private_storage import prepare_database
+
+        prepare_database(self._db_path)
         conn = self._get_conn()
         try:
             conn.execute("PRAGMA journal_mode = WAL;")
@@ -360,10 +369,7 @@ class WarLog:
         if self._passphrase:
             return hashlib.pbkdf2_hmac('sha256', self._passphrase.encode(),
                                        b'warlog-integrity-v1', 200000, dklen=32)
-        # Dev mode: stable key from DB path + user
-        import getpass
-        seed = f"{self._db_path}:{getpass.getuser()}".encode()
-        return hashlib.pbkdf2_hmac('sha256', seed, b'dev-integrity-v1', 100000, dklen=32)
+        raise RuntimeError("A secret-managed integrity key is required.")
 
     def _compute_row_hmac(self, row: Dict[str, Any]) -> str:
         """Compute HMAC-SHA256 of a row's canonical representation."""
@@ -916,7 +922,7 @@ class WarLog:
         Returns the archive path.
         """
         ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-        archive_base = os.path.join(self.log_dir, f"warlog.{ts}.db")
+        archive_base = os.path.join(self.log_dir, f"warlog.{ts}.{uuid.uuid4().hex}.db")
         archive_gz = archive_base + ".gz"
 
         # Set rotation guard so the rotation-event write doesn't re-trigger rotation
@@ -933,9 +939,12 @@ class WarLog:
                 conn.close()
 
             # Gzip the DB file directly
-            with open(self._db_path, 'rb') as f_in:
-                with gzip.open(archive_gz, 'wb') as f_out:
+            archive_fd = os.open(archive_gz, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+            with os.fdopen(archive_fd, 'wb') as archive:
+                with open(self._db_path, 'rb') as f_in, gzip.GzipFile(fileobj=archive, mode='wb') as f_out:
                     f_out.writelines(f_in)
+                archive.flush()
+                os.fsync(archive.fileno())
 
             # Remove the current DB + WAL/SHM
             for suffix in ['', '-wal', '-shm']:

@@ -3,6 +3,7 @@
 import os
 import json
 import logging
+import copy
 from typing import Any, Optional
 from .defaults import *
 
@@ -21,7 +22,7 @@ class Settings:
 
     def _load_defaults(self) -> None:
         """Load all defaults into settings."""
-        self._data = {k: v for k, v in globals().items()
+        self._data = {k: copy.deepcopy(v) for k, v in globals().items()
                       if k.isupper() and not k.startswith("_")}
 
     def get(self, key: str, default: Any = None) -> Any:
@@ -33,12 +34,29 @@ class Settings:
         self._data[key] = value
 
     def load_file(self, path: str) -> None:
-        """Load settings from a JSON file."""
-        if os.path.exists(path):
-            with open(path, "r") as f:
+        """Validate the entire file before applying any of its settings."""
+        try:
+            with open(path, "r", encoding="utf-8") as f:
                 data = json.load(f)
-                for k, v in data.items():
-                    self._data[k] = v
+        except (OSError, ValueError) as exc:
+            raise ValueError(f"Cannot load configuration {path}: {exc}") from exc
+        if not isinstance(data, dict):
+            raise ValueError("Configuration must contain a JSON object.")
+        for key, value in data.items():
+            if key == "notes" and isinstance(value, str):
+                continue
+            if key not in self._data:
+                raise ValueError(f"Unknown configuration setting: {key}")
+            expected = self._data[key]
+            if type(value) is not type(expected):
+                raise ValueError(f"{key} must be {type(expected).__name__}.")
+            if isinstance(expected, list) and expected and not all(
+                type(item) is type(expected[0]) for item in value
+            ):
+                raise ValueError(f"{key} contains invalid list values.")
+            if key in {"CLIENT_MODE", "REQUIRE_AUTHORIZATION", "DENY_HIGH_RISK_PHASES"} and value is not True:
+                raise ValueError(f"{key} cannot be disabled in the client configuration.")
+        self._data.update({k: v for k, v in data.items() if k != "notes"})
 
     def save_file(self, path: str) -> None:
         """Save current settings to a JSON file."""

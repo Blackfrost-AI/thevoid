@@ -345,14 +345,15 @@ class TestStatusEnrichment:
             setattr(agent, k, v)
         return agent
 
-    def test_magicmock_engine_does_not_crash(self, runner):
-        """Regression: MagicMock engine must render status without error."""
-        engine = _mock_engine()
-        with patch("cli.app._make_engine", return_value=engine):
+    def test_mock_evidence_observer_does_not_crash(self, runner):
+        observer = MagicMock()
+        observer.degraded = []
+        observer.get_status.return_value = {}
+        with patch("cli.app._make_evidence_bridge", return_value=observer):
             result = runner.invoke(cli, ["status"])
         assert result.exit_code == 0
 
-    def test_status_json_includes_enrichment(self, runner):
+    def test_status_json_does_not_invent_live_enrichment(self, runner):
         engine = MagicMock()
         engine.get_status.return_value = {"engaged": False}
         # A real agent with a completed attack log + scenario.
@@ -362,13 +363,18 @@ class TestStatusEnrichment:
             scenario="rdp-brute-cascade",
         )
         engine.agent = agent
-        with patch("cli.app._make_engine", return_value=engine):
+        observer = MagicMock()
+        observer.degraded = []
+        observer.get_status.return_value = {"attack_log": 3}
+        with patch("cli.app._make_engine", return_value=engine) as engine_factory, \
+             patch("cli.app._make_evidence_bridge", return_value=observer):
             result = runner.invoke(cli, ["status", "--json-output"])
         assert result.exit_code == 0
         data = json.loads(result.output)
-        assert data.get("scenario") == "rdp-brute-cascade"
-        # Prevention should be present (real CoverageScorer over attack_log).
-        assert "prevention" in data
+        assert data["recorded_engagements"] == 3
+        assert data["runtime_state"] == "not_attached"
+        assert "scenario" not in data
+        engine_factory.assert_not_called()
 
     def test_prevention_score_computed(self):
         import cli.app as app

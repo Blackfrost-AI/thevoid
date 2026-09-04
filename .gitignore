@@ -73,6 +73,9 @@ node_modules/
 npm-debug.log*
 yarn-error.log*
 # package-lock.json files are committed for reproducible private builds
+dependency-scan.json
+*.token
+command-center-*-open.html
 
 # ── OS / editor ────────────────────────────────────────────
 .DS_Store

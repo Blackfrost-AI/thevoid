@@ -356,12 +356,13 @@ class TestBoneyard:
         results = b.search(tags=["critical"])
         assert len(results) == 1
 
-    def test_search_by_query(self, tmp_path):
+    def test_sensitive_payload_is_not_in_fulltext_index(self, tmp_path):
         b = Boneyard(storage_dir=str(tmp_path))
         b.store("credential", {"user": "admin", "pass": "secret"})
         b.store("credential", {"user": "root", "pass": "toor"})
         results = b.search(query="admin")
-        assert len(results) == 1
+        assert results == []
+        assert len(b.search(category="credential")) == 2
 
     def test_count(self, tmp_path):
         b = Boneyard(storage_dir=str(tmp_path))

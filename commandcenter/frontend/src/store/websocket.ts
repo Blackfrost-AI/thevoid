@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { wsUrl } from '../api/client'
+import { sessionToken } from '../api/session'
 import type { Status, WarLogEntry } from '../api/client'
 import { useEngagementStore } from './engagement'
 import { useDemoStore } from './demo'
@@ -40,7 +41,7 @@ export const useWsStore = create<WsState>((set, get) => ({
     }
     set({ state: 'connecting', lastError: null })
     try {
-      socket = new WebSocket(wsUrl())
+      socket = new WebSocket(wsUrl(), ['void-session', sessionToken()])
     } catch (e) {
       set({ state: 'error', lastError: String(e) })
       scheduleReconnect(() => get().connect())

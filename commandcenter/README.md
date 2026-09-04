@@ -4,21 +4,24 @@ Localhost-only operator console for THE VOID red team platform. Dense dark opera
 
 **Binding:** `127.0.0.1:7070` only. No multi-tenant, no cloud, no external network.
 
+The unreleased hardening update requires an operator token. Open the console
+from its desktop launcher or `thevoid-command-center start`; use
+`thevoid-command-center open` for a new authorized tab. Bare links show the
+local-access screen. Tokens are not cookies, are not embedded in the bundle,
+and must never be shared or included in support logs. REST uses Bearer headers;
+WebSockets use an authenticated subprotocol. Public health omits license identity.
+
 ## Quick start
 
 ```bash
-# Development (API + Vite HMR)
-cd commandcenter
-./scripts/dev.sh
-# → Frontend http://127.0.0.1:5173
-# → Backend  http://127.0.0.1:7070
-
-# Production (single process)
-./scripts/build.sh
-cd ..
+# Built browser console (single process)
 thevoid-command-center start
 # → http://127.0.0.1:7070
 ```
+
+Vite origins are denied by default. Frontend development requires explicit
+`VOID_CC_DEV_ORIGINS=1` and token provisioning for that development origin.
+The supported operator path remains the same-origin built console above.
 
 ## Architecture
 
@@ -68,10 +71,11 @@ python -m pytest commandcenter/tests/backend/ -v
 |---------|--------|
 | Localhost bind | Asserted at startup; rejects `0.0.0.0` |
 | Browser boundary | Loopback Host allowlist plus Origin checks on mutations and WebSockets |
+| Operator access | Private local token, explicit Bearer headers, authenticated WebSocket subprotocol |
 | Browser hardening | CSP, frame denial, no-referrer, MIME sniffing, and permissions headers |
 | No telemetry | No outbound analytics or hosted service dependency |
 | Offline entitlement | Commercial startup verifies a signed local license; status is visible in Settings |
-| No secrets in browser | Response sanitizer strips credentials / HMACs |
+| Evidence redaction | Response sanitizer strips credential-like fields / HMACs; the operator access token is held in tab session storage |
 | Write path | Report/export only; no attack initiation |
 
 This release visualizes, investigates, and exports validation evidence. It

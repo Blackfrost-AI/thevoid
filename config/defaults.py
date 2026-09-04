@@ -31,14 +31,14 @@ VOID_BANNER = r"""
 """
 
 # ─── Governance / demo profile ───
-# When CLIENT_MODE is True, engagements require an authorization file unless
-# explicitly overridden. STRICT_DIFFICULTY makes abort assessments block engage.
-CLIENT_MODE = False
-STRICT_DIFFICULTY = False
-REQUIRE_AUTHORIZATION = False
+# Safe defaults apply to every entry point, not just an optional CLI profile.
+CLIENT_MODE = True
+STRICT_DIFFICULTY = True
+REQUIRE_AUTHORIZATION = True
 AUTHORIZATION_FILE = ""  # path to JSON/YAML scope document
 DEFAULT_ENGAGE_MODE = "full"
-DENY_HIGH_RISK_PHASES = False
+DENY_HIGH_RISK_PHASES = True
+DRY_RUN = False
 HIGH_RISK_PHASES = [
     "destruction",
     "crypto_theft",

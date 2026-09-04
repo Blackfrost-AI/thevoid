@@ -2,6 +2,12 @@
 
 Operator-authorized, local-first security validation for Linux.
 
+> **Unreleased hardening update:** production handoff is blocked pending legacy
+> evidence migration, installer lifecycle acceptance, and release-owner inputs.
+> Read [the hardening handoff](docs/HARDENING_HANDOFF.md),
+> [security policy](SECURITY.md), and [compatibility changes](CHANGELOG.md)
+> before using existing data or preparing a client download.
+
 THE VOID combines scope-gated validation, tamper-evident evidence, coverage
 scoring, reporting, continuity checks, and a browser-first Command Center.
 Frosty is the operator-facing agent identity. Runtime evidence remains on the
@@ -61,10 +67,13 @@ python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
 python -m pip install -e '.[dev]'
-python -m commandcenter.backend.main
+python -m commandcenter.launcher start
 ~~~
 
-Open [http://127.0.0.1:7070](http://127.0.0.1:7070). On an empty workspace,
+The launcher opens an authorized browser tab at localhost. A bare
+[http://127.0.0.1:7070](http://127.0.0.1:7070) link intentionally shows a locked
+screen; use `python -m commandcenter.launcher open` to authorize a new tab.
+On an empty workspace,
 select **Explore Demo**, or use the **DEMO OFF** toggle in the top bar. Demo Mode
 loads a deterministic fictional assessment into isolated stores and does not
 contact real targets.
@@ -77,9 +86,9 @@ thevoid version
 thevoid status
 ~~~
 
-The health response should report <code>"ok": true</code>. Stop the server with
-Ctrl+C. Use the top-bar toggle to return to live local stores before beginning an
-authorized assessment.
+The health response should report <code>"ok": true</code> and
+<code>"ready": true</code>. Degraded readiness returns HTTP 503. Stop the
+background server with `python -m commandcenter.launcher stop`.
 
 ## What THE VOID is
 
@@ -284,7 +293,7 @@ available at [http://127.0.0.1:7070/api/docs](http://127.0.0.1:7070/api/docs).
 To select another local port:
 
 ~~~bash
-VOID_CC_PORT=7071 python -m commandcenter.backend.main
+VOID_CC_PORT=7071 python -m commandcenter.launcher start
 ~~~
 
 The host setting is intentionally restricted to loopback. Startup rejects
@@ -357,8 +366,11 @@ architecture.
 
 ## Authorization and rules of engagement
 
-Use the <code>client</code> profile for real client validation. It requires an
-authorization file. Keep customer-specific scope documents outside the
+Authorization is mandatory at the CLI scope gate, not an optional client-profile
+setting. Missing documents, implicit consent, empty scope/modes, out-of-scope
+overrides, and invalid/expired windows are denied. The shipped scope example is
+deliberately inactive and is not permission to contact any system. Keep
+customer-specific scope documents outside the
 repository if they contain names, addresses, credentials, or other sensitive
 details.
 
@@ -368,6 +380,7 @@ An authorization document defines:
 
 - Engagement name and operator.
 - Explicit authorization state.
+- Timezone-aware `not_before` and `expires_at` values; expiration is exclusive.
 - In-scope and out-of-scope targets.
 - Allowed modes.
 - Denied phases.
@@ -405,11 +418,11 @@ thevoid [--help] [--version] COMMAND [OPTIONS]
 | Command | Purpose |
 |---|---|
 | <code>version</code> | Show application, Python, platform, phase, scenario, and Command Center metadata |
-| <code>status</code> | Show Frosty, target, session, evidence, and integrity state |
+| <code>status</code> | Show recorded evidence totals; separate live runtime state is explicitly unavailable |
 | <code>demo</code> | Run the deterministic narrated demo with zero network activity |
 | <code>recon</code> | Schedule only the reconnaissance phase |
 | <code>engage</code> | Plan or run an authorized mode/scenario against one or more targets |
-| <code>targets</code> | Add, remove, clear, or list targets for the active agent |
+| <code>targets</code> | List recorded hosts; old nonpersistent edit flags now return a usage error |
 | <code>scenarios list</code> | List curated phase plans |
 | <code>scenarios show NAME</code> | Inspect one scenario |
 | <code>report</code> | Render current WarLog and Boneyard evidence |
@@ -484,15 +497,22 @@ thevoid engage <approved-target> --scenario mcp-critical \
 - **WarLog** is an append-oriented SQLite event record with HMAC chain-of-custody
   metadata, spans, traces, rotation, and integrity verification.
 - **Boneyard** is a SQLite evidence store for hosts, findings, attack paths, and
-  outcomes, with integrity metadata and optional passphrase-based encryption.
+  outcomes, with secret-managed integrity and encryption of sensitive finding payloads.
 - **Reporter** renders the current stores as JSON, Markdown, or HTML.
 - **Coverage scoring** summarizes observed prevention strength; it is not a
   certification.
 
-Integrity protects evidence against undetected modification; it does not make
-the evidence secret. Boneyard encryption is optional, and default development
-stores are not encrypted. Protect the workstation with OS access controls and
-full-disk encryption appropriate to the engagement.
+New stores use private per-store keys under the operator's configuration root.
+Existing nonempty stores without those keys require a reviewed migration; they
+are not silently re-keyed. Encryption is field-level, not whole-database:
+relational metadata, titles/tags, other categories, and event logs may remain
+plaintext. Integrity is not immutable storage. Protect the workstation and
+backups with OS access controls and full-disk encryption. See [SECURITY.md](SECURITY.md).
+
+CLI and browser reports share the recorded engagement projection. Invalid or
+oversized projections fail rather than silently producing incomplete totals.
+Failed exports return nonzero; diagnostics go to stderr and JSON stdout stays
+machine-readable. CLI status JSON uses schema `thevoid.status.v1`.
 
 Generate a local report:
 

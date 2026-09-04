@@ -1,5 +1,10 @@
 # Client Testing Guide
 
+> The working tree contains an unreleased defensive update. Do not use this
+> guide as production sign-off: [HARDENING_HANDOFF.md](docs/HARDENING_HANDOFF.md)
+> lists outstanding migration, installer, and release-infrastructure gates.
+> Only synthetic/offline acceptance is covered by this update's verification.
+
 This repository is a clean testing baseline. It contains no prior customer
 records or historical assessment results.
 

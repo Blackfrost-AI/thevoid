@@ -37,11 +37,8 @@ class Settings:
     # Wiped and rebuilt deterministically on every enable; never touches the
     # live boneyard/warlog.
     demo_dir: Path = field(default_factory=lambda: get_runtime_paths().commandcenter_demo)
-    # CORS for Vite dev server
-    cors_origins: tuple[str, ...] = (
-        "http://127.0.0.1:5173",
-        "http://localhost:5173",
-    )
+    # Development origins must be explicitly opted into; never production defaults.
+    cors_origins: tuple[str, ...] = ()
 
     def assert_localhost(self) -> None:
         """Reject non-localhost bindings. Security hard-stop."""
@@ -78,6 +75,8 @@ def load_settings() -> Settings:
     """Load settings from environment with safe defaults."""
     host = os.environ.get("VOID_CC_HOST", "127.0.0.1")
     port = int(os.environ.get("VOID_CC_PORT", "7070"))
+    if not 1 <= port <= 65535:
+        raise ValueError("VOID_CC_PORT must be between 1 and 65535.")
     paths = get_runtime_paths()
     session_state_db = Path(
         os.environ.get("VOID_CC_SESSION_DB", str(paths.commandcenter_session_db))
@@ -94,6 +93,8 @@ def load_settings() -> Settings:
         session_state_db=session_state_db,
         export_dir=export_dir,
         demo_dir=demo_dir,
+        cors_origins=("http://127.0.0.1:5173", "http://localhost:5173")
+        if os.environ.get("VOID_CC_DEV_ORIGINS") == "1" else (),
     )
     settings.assert_localhost()
     return settings

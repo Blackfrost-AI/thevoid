@@ -100,8 +100,8 @@ class Boneyard:
     Args:
         storage_dir: Directory for the database file. If None, uses config default.
         passphrase: Passphrase for AES-256-GCM encryption-at-rest.
-                    If None, the DB is unencrypted (development mode).
-                    The passphrase is NEVER stored on disk.
+                    If None, a private per-store key is managed in the operator's
+                    configuration directory. Existing legacy data is not re-keyed.
     """
 
     def __init__(self, storage_dir: Optional[str] = None,
@@ -109,13 +109,22 @@ class Boneyard:
         if storage_dir is None:
             from config.defaults import BONEYARD_DIR
             storage_dir = BONEYARD_DIR
+        # Refuse missing cryptography before creating or opening any store.
+        from cryptography.hazmat.primitives.ciphers.aead import AESGCM  # noqa: F401
+        from core.private_storage import private_directory, prepare_database, store_passphrase
+
+        if passphrase == "":
+            raise ValueError("An empty evidence passphrase is not permitted.")
         self.storage_dir = storage_dir
-        os.makedirs(self.storage_dir, exist_ok=True)
+        private_directory(self.storage_dir)
 
         self._db_path = os.path.join(self.storage_dir, "boneyard.db")
         self._wal_path = self._db_path + "-wal"
         self._shm_path = self._db_path + "-shm"
-        self._encrypted = passphrase is not None
+        if passphrase is None:
+            passphrase = store_passphrase(self._db_path)
+        prepare_database(self._db_path)
+        self._encrypted = True
         self._passphrase = passphrase
         self._key_id = self._derive_key_id(passphrase) if passphrase else "none"
 
@@ -247,8 +256,7 @@ class Boneyard:
         try:
             from cryptography.hazmat.primitives.ciphers.aead import AESGCM
         except ImportError:
-            # Fallback: use hashlib-based stream cipher if cryptography not available
-            return self._encrypt_field_fallback(plaintext)
+            raise RuntimeError("Supported cryptography is required; encryption cannot fall back.") from None
 
         salt = secrets.token_bytes(16)
         key = self._derive_key(salt)
@@ -268,7 +276,7 @@ class Boneyard:
         try:
             from cryptography.hazmat.primitives.ciphers.aead import AESGCM
         except ImportError:
-            return self._decrypt_field_fallback(ciphertext_b64, nonce_b64)
+            raise RuntimeError("Supported cryptography is required; decryption cannot fall back.") from None
 
         try:
             payload = _unb64(ciphertext_b64)
@@ -279,43 +287,8 @@ class Boneyard:
             aesgcm = AESGCM(key)
             pt = aesgcm.decrypt(nonce, ct, None)
             return pt.decode('utf-8')
-        except Exception as e:
-            logger.error(f"Decryption failed: {e}")
-            return ""
-
-    def _encrypt_field_fallback(self, plaintext: str) -> Tuple[str, str]:
-        """Fallback encryption using XOR stream cipher (when cryptography lib absent)."""
-        salt = secrets.token_bytes(16)
-        key = self._derive_key(salt)
-        nonce = secrets.token_bytes(16)
-        # XOR stream cipher
-        stream = bytearray()
-        counter = 0
-        while len(stream) < len(plaintext.encode()):
-            block = hashlib.sha256(key + nonce + counter.to_bytes(8, 'big')).digest()
-            stream.extend(block)
-            counter += 1
-        ct = bytes(a ^ b for a, b in zip(plaintext.encode('utf-8'), stream[:len(plaintext.encode())]))
-        payload = salt + ct
-        return _b64(payload), _b64(nonce)
-
-    def _decrypt_field_fallback(self, ciphertext_b64: str, nonce_b64: str) -> str:
-        """Fallback decryption."""
-        try:
-            payload = _unb64(ciphertext_b64)
-            salt = payload[:16]
-            ct = payload[16:]
-            nonce = _unb64(nonce_b64)
-            key = self._derive_key(salt)
-            stream = bytearray()
-            counter = 0
-            while len(stream) < len(ct):
-                block = hashlib.sha256(key + nonce + counter.to_bytes(8, 'big')).digest()
-                stream.extend(block)
-            pt = bytes(a ^ b for a, b in zip(ct, stream[:len(ct)]))
-            return pt.decode('utf-8', errors='replace')
-        except Exception:
-            return ""
+        except Exception as exc:
+            raise RuntimeError("Evidence decryption failed; verify the original key and database integrity.") from exc
 
     # ─── HMAC Integrity ───────────────────────────────────────────────────────
 
@@ -353,10 +326,7 @@ class Boneyard:
         if self._passphrase:
             return hashlib.pbkdf2_hmac('sha256', self._passphrase.encode(),
                                        b'boneyard-integrity-v1', 200000, dklen=32)
-        # Development mode: derive a stable key from DB path + machine
-        import getpass
-        seed = f"{self._db_path}:{getpass.getuser()}".encode()
-        return hashlib.pbkdf2_hmac('sha256', seed, b'dev-integrity-v1', 100000, dklen=32)
+        raise RuntimeError("A secret-managed integrity key is required.")
 
     def _get_last_chain_hmac(self, conn: sqlite3.Connection) -> str:
         """Get the last chain_hmac from the audit log for chaining."""
@@ -779,13 +749,11 @@ class Boneyard:
                                 'auto-route vuln from finding data', None, {'id': vuln_id})
         return vuln_id
 
-    def _is_sensitive(self, category: str) -> bool:
-        """Determine if a category contains sensitive data requiring encryption."""
-        return category in ('cred', 'credential', 'loot', 'exfil')
-
     def _build_fts_content(self, category: str, title: str, data: Dict,
                            tags: List[str]) -> str:
         """Build denormalized text for FTS indexing."""
+        if self._is_sensitive(category):
+            return category
         parts = [category, title]
         parts.extend(tags)
         # Add key fields from data for searchability
@@ -854,8 +822,10 @@ class Boneyard:
 
     def _is_sensitive(self, category: str) -> bool:
         """Check if a category contains sensitive data requiring encryption."""
-        return category in ("cred", "creds", "secret", "secrets", "key", "keys",
-                            "password", "token", "credential", "aws", "azure", "gcp")
+        return category.startswith("attack_") or category in (
+            "cred", "creds", "secret", "secrets", "key", "keys", "password",
+            "token", "credential", "aws", "azure", "gcp", "loot", "exfil",
+        )
 
     def _is_sensitive_encrypted(self, data: str) -> bool:
         """Check if data appears to be encrypted (envelope marker)."""
