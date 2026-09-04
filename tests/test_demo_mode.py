@@ -95,6 +95,14 @@ def test_enable_swaps_to_isolated_stores(tmp_path):
 def test_demo_data_complete_and_flagged():
     bridge = _bridge()
     bridge.enable_demo_mode()
+    status = bridge.get_status()
+    assert status["c2_channels"] == 1
+    assert status["c2_active_channels"] == 0
+    assert status["c2_recorded_channels"] == 1
+    channels = bridge.list_channels()
+    assert len(channels) == 1
+    assert channels[0]["status"] == "recorded"
+    assert channels[0]["live"] is False
     graph = bridge.graph_attack_paths(None)
     nodes = graph.get("nodes") or []
     edges = graph.get("edges") or []
@@ -247,7 +255,7 @@ def test_demo_router_endpoints():
 
     poller_mod.EventPoller = _StubPoller
     try:
-        client = TestClient(app)
+        client = TestClient(app, base_url="http://127.0.0.1:7070")
         r = client.get("/api/demo")
         assert r.status_code == 200
         assert r.json()["demo_mode"] is False

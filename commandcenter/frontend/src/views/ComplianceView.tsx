@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Panel, EmptyState } from '../components/common/Panel'
+import { Panel, EmptyState, ErrorState } from '../components/common/Panel'
 import { useUiStore } from '../store/ui'
 import { api } from '../api/client'
 import type { ComplianceResponse, MitreResponse } from '../types/insights'
@@ -78,7 +78,6 @@ export function ComplianceView() {
               {compliance.note}
             </div>
           ) : null}
-          {error ? <div className="mt-3 text-[11px] text-void-error">{error}</div> : null}
         </Panel>
 
         <Panel title="Mapped Techniques">
@@ -93,6 +92,7 @@ export function ComplianceView() {
           <div className="mt-3 flex gap-2">
             <input
               className="void-input flex-1"
+              aria-label="Filter compliance techniques"
               placeholder="Filter technique / name…"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
@@ -109,7 +109,11 @@ export function ComplianceView() {
         className="flex-1 min-h-[280px]"
         bodyClassName="!p-0 overflow-auto"
       >
-        {!compliance ? (
+        {error ? (
+          <div className="p-3">
+            <ErrorState message={error} onRetry={load} />
+          </div>
+        ) : !compliance ? (
           <div className="p-3">
             <EmptyState message={busy ? 'Loading cross-reference…' : 'No compliance data yet.'} />
           </div>
@@ -132,7 +136,18 @@ export function ComplianceView() {
               {rows.map((id) => {
                 const ref = compliance.compliance[id]
                 return (
-                  <tr key={id} className="cursor-pointer" onClick={() => inspectRow(id)}>
+                  <tr
+                    key={id}
+                    className="cursor-pointer"
+                    onClick={() => inspectRow(id)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault()
+                        inspectRow(id)
+                      }
+                    }}
+                    tabIndex={0}
+                  >
                     <td className="mono text-void-info">{id}</td>
                     <td>{techNames[id] || '—'}</td>
                     {FRAMEWORKS.map((fw) => (

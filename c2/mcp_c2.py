@@ -191,7 +191,17 @@ class MCPC2:
         # Store in boneyard
         self.boneyard.store(
             category="mcp_c2_channel",
-            data={"channel_id": channel_id, "endpoint": endpoint, "tool_name": tool_name},
+            data={
+                "channel_id": channel_id,
+                "status": channel.status,
+                "target": target.name,
+                "endpoint": endpoint,
+                "tool_name": tool_name,
+                "encoding": encoding,
+                "established_at": channel.established_at,
+                "beacon_count": channel.beacon_count,
+                "task_count": channel.task_count,
+            },
             tags=["mcp", "c2", "channel"],
         )
 

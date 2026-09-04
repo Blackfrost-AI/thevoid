@@ -7,7 +7,7 @@ CC="$ROOT/commandcenter"
 
 echo "==> Building frontend"
 cd "$CC/frontend"
-npm install
+npm ci
 npm run build
 
 echo "==> Frontend built to $CC/frontend/dist"

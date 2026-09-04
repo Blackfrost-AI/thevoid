@@ -20,6 +20,8 @@ class StatusResponse(BaseModel):
     beacon_count: int = 0
     c2_status: Dict[str, Any] = Field(default_factory=dict)
     c2_channels: int = 0
+    c2_active_channels: int = 0
+    c2_recorded_channels: int = 0
     c2_beacons: int = 0
     c2_tasks: int = 0
     boneyard_items: int = 0

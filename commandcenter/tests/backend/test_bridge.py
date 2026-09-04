@@ -62,6 +62,8 @@ def test_get_status_aggregates():
     assert status["engaged"] is True
     assert status["target_count"] == 1
     assert status["c2_channels"] == 1
+    assert status["c2_active_channels"] == 1
+    assert status["c2_recorded_channels"] == 0
     assert status["boneyard_items"] == 42
     assert status["degraded"] == []
 
@@ -94,6 +96,30 @@ def test_query_hosts_returns_list():
     assert len(hosts) == 1
     assert hosts[0]["id"] == "h1"
     assert "row_hmac" not in hosts[0]
+
+
+def test_attack_log_reconstructs_persisted_engagements():
+    b = _make_bridge_with_mocks()
+    payload = {"target": "web01", "mode": "full", "findings": {}}
+    b._boneyard.categories.return_value = ["recon", "attack_web01_1"]
+    b._boneyard.search.return_value = [{"data": payload}, {"data": payload}]
+    b._chaos = None
+
+    assert b.get_attack_log() == [payload]
+    b._boneyard.search.assert_called_once_with(category="attack_web01_1", limit=500)
+
+
+def test_report_refreshes_attack_log_from_store():
+    b = _make_bridge_with_mocks()
+    payload = {"target": "web01", "mode": "full", "findings": {}}
+    b._boneyard.categories.return_value = ["attack_web01_1"]
+    b._boneyard.search.return_value = [{"data": payload}]
+    b._chaos = None
+    b._reporter.gather_data.return_value = {"exec_summary": {}}
+
+    b.gather_report_data()
+
+    assert b._reporter.attack_log == [payload]
 
 
 def test_boneyard_unavailable():
@@ -139,3 +165,81 @@ def test_list_channels_strips_auth():
     channels = b.list_channels()
     assert channels[0]["channel_id"] == "c1"
     assert "auth" not in channels[0]
+    assert channels[0]["live"] is True
+
+
+def test_list_channels_falls_back_to_recorded_evidence():
+    b = _make_bridge_with_mocks()
+    b._mcp_c2.list_channels.return_value = []
+    b._mcp_c2.channels = {}
+    b._boneyard.search.return_value = [
+        {
+            "epoch": 123.0,
+            "data": {
+                "channel_id": "recorded-1",
+                "status": "active",
+                "target": "host.demo.invalid",
+                "endpoint": "http://host.demo.invalid/mcp",
+                "auth": {"token": "must-not-leak"},
+            },
+        }
+    ]
+
+    channels = b.list_channels()
+
+    assert channels == [
+        {
+            "channel_id": "recorded-1",
+            "status": "recorded",
+            "last_known_status": "active",
+            "source": "evidence",
+            "live": False,
+            "target": "host.demo.invalid",
+            "endpoint": "http://host.demo.invalid/mcp",
+            "tool_name": None,
+            "encoding": None,
+            "beacon_count": 0,
+            "task_count": 0,
+            "fail_count": 0,
+            "established_at": 123.0,
+            "last_beacon": None,
+        }
+    ]
+
+
+def test_recorded_channel_tolerates_invalid_counters():
+    b = _make_bridge_with_mocks()
+    b._mcp_c2 = None
+    b._boneyard.search.return_value = [
+        {
+            "epoch": 123.0,
+            "data": {
+                "channel_id": "recorded-1",
+                "beacon_count": "invalid",
+                "task_count": -2,
+                "fail_count": None,
+            },
+        }
+    ]
+
+    channels = b.list_channels()
+
+    assert len(channels) == 1
+    assert channels[0]["beacon_count"] == 0
+    assert channels[0]["task_count"] == 0
+    assert channels[0]["fail_count"] == 0
+
+
+def test_recorded_channel_health_never_probes_network():
+    b = _make_bridge_with_mocks()
+    b._mcp_c2.channels = {}
+    b._boneyard.search.return_value = [
+        {"epoch": 123.0, "data": {"channel_id": "recorded-1"}}
+    ]
+
+    health = b.check_channel_health("recorded-1")
+
+    assert health["healthy"] is False
+    assert health["status"] == "recorded"
+    assert health["live"] is False
+    b._mcp_c2.check_channel_health.assert_not_called()

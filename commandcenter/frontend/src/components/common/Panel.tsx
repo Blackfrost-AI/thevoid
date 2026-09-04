@@ -16,8 +16,8 @@ export function Panel({
   return (
     <section className={`panel flex flex-col min-h-0 ${className}`}>
       <div className="panel-header">
-        <span>{title}</span>
-        {actions ? <div className="flex items-center gap-2">{actions}</div> : null}
+        <h2>{title}</h2>
+        {actions ? <div className="panel-actions flex flex-wrap items-center gap-2">{actions}</div> : null}
       </div>
       <div className={`panel-body flex-1 min-h-0 ${bodyClassName}`}>{children}</div>
     </section>
@@ -53,12 +53,32 @@ export function Stat({
 
 export function EmptyState({ message }: { message: string }) {
   return (
-    <div className="text-void-text-mute text-[12px] py-6 text-center border border-dashed border-void-line rounded">
+    <div role="status" className="text-void-text-mute text-[12px] py-6 text-center border border-dashed border-void-line rounded">
       {message}
     </div>
   )
 }
 
 export function LoadingState({ label = 'Loading…' }: { label?: string }) {
-  return <div className="text-void-text-dim text-[12px] py-4">{label}</div>
+  return <div role="status" aria-live="polite" className="text-void-text-dim text-[12px] py-4">{label}</div>
+}
+
+export function ErrorState({
+  message,
+  onRetry,
+}: {
+  message: string
+  onRetry?: () => void
+}) {
+  return (
+    <div role="alert" className="rounded border border-void-error/40 bg-void-error/5 p-3 text-[12px] text-void-error">
+      <div>Could not load this view.</div>
+      <div className="mt-1 mono break-words text-[11px] opacity-80">{message}</div>
+      {onRetry ? (
+        <button type="button" className="void-btn mt-3" onClick={onRetry}>
+          Try again
+        </button>
+      ) : null}
+    </div>
+  )
 }

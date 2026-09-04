@@ -7,6 +7,7 @@ export function ReportsView() {
   const [operator, setOperator] = useState('THE VOID')
   const [name, setName] = useState('Authorized Security Assessment')
   const [content, setContent] = useState<string | null>(null)
+  const [contentFormat, setContentFormat] = useState('json')
   const [preview, setPreview] = useState<Record<string, unknown> | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -18,6 +19,7 @@ export function ReportsView() {
       const data = await api.reportPreview(operator, name)
       setPreview(data)
       setContent(JSON.stringify(data, null, 2))
+      setContentFormat('json')
     } catch (e) {
       setError(String(e))
     } finally {
@@ -35,6 +37,7 @@ export function ReportsView() {
         engagement_name: name,
       })
       setContent(r.content)
+      setContentFormat(r.format)
     } catch (e) {
       setError(String(e))
     } finally {
@@ -43,6 +46,26 @@ export function ReportsView() {
   }
 
   const integrity = preview?.integrity as Record<string, unknown> | undefined
+
+  const downloadReport = () => {
+    if (!content) return
+    const normalized = contentFormat === 'md' ? 'markdown' : contentFormat
+    const extension = normalized === 'markdown' ? 'md' : normalized
+    const mime =
+      normalized === 'html'
+        ? 'text/html'
+        : normalized === 'json'
+          ? 'application/json'
+          : 'text/markdown'
+    const url = URL.createObjectURL(new Blob([content], { type: `${mime};charset=utf-8` }))
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `void-report.${extension}`
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+  }
 
   return (
     <div className="h-full flex flex-col gap-3">
@@ -56,6 +79,11 @@ export function ReportsView() {
             <button type="button" className="void-btn primary" onClick={generate} disabled={busy}>
               Generate
             </button>
+            {content ? (
+              <button type="button" className="void-btn" onClick={downloadReport} disabled={busy}>
+                Download
+              </button>
+            ) : null}
           </>
         }
       >
@@ -101,9 +129,11 @@ export function ReportsView() {
           <div className="p-3">
             <EmptyState message="Generate or preview a report to view content." />
           </div>
-        ) : format === 'html' && content.trim().startsWith('<') ? (
+        ) : contentFormat === 'html' && content.trim().startsWith('<') ? (
           <iframe
             title="report"
+            sandbox=""
+            referrerPolicy="no-referrer"
             className="w-full h-full min-h-[400px] bg-white"
             srcDoc={content}
           />

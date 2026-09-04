@@ -265,11 +265,39 @@ def seed_demo_boneyard(boneyard: Any) -> Dict[str, Any]:
             "title": "DEMO: continuity drift event",
             "demo": True,
             "kind": "baseline_shift",
+            "target": "stage-db01.demo.void",
+            "phases": {
+                "lateral": {
+                    "expected": "blocked",
+                    "observed": "reachable",
+                }
+            },
             "detail": "DEMO: seeded drift event for the stage demo",
             "severity": "info",
         },
         tags=["demo"],
         epoch=DEMO_EPOCH_BASE + DEMO_ENGAGEMENT_GAP + 300.0,
+    )
+
+    # Restart-safe C2 evidence exercises the browser's distinction between
+    # a live in-process channel and a previously recorded channel.
+    boneyard.store(
+        "mcp_c2_channel",
+        {
+            "title": "DEMO: recorded MCP channel",
+            "demo": True,
+            "channel_id": "demo-channel-01",
+            "status": "active",
+            "target": "stage-db01.demo.void",
+            "endpoint": "http://stage-db01.demo.void:8080/mcp",
+            "tool_name": "search",
+            "encoding": "base64",
+            "established_at": DEMO_EPOCH_BASE + DEMO_ENGAGEMENT_GAP + 180.0,
+            "beacon_count": 1,
+            "task_count": 0,
+        },
+        tags=["demo", "mcp", "c2", "channel"],
+        epoch=DEMO_EPOCH_BASE + DEMO_ENGAGEMENT_GAP + 180.0,
     )
 
     logger.info(

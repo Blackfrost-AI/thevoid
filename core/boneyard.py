@@ -44,6 +44,7 @@ import sqlite3
 import logging
 import secrets
 import struct
+from ipaddress import ip_address as parse_ip_address
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Iterator, Tuple
 from datetime import datetime, timezone
 from dataclasses import dataclass, field, asdict
@@ -536,12 +537,23 @@ class Boneyard:
             if 'host' in data or 'ip' in data or 'target' in data:
                 host_data = data.get('host', data.get('ip', data.get('target', {})))
                 if isinstance(host_data, str):
-                    # It's just an IP/hostname string
-                    host_id = self._create_host_record(conn, ip=host_data, data=data, ts=ts, epoch=epoch)
+                    # Route hostnames into the hostname column and reuse a
+                    # matching host instead of adding one row per finding.
+                    try:
+                        parse_ip_address(host_data)
+                        ip_value, hostname_value = host_data, ''
+                    except ValueError:
+                        ip_value, hostname_value = '', host_data
+                    host_id = self._ensure_host_record(
+                        conn, ip=ip_value, hostname=hostname_value,
+                        data=data, ts=ts, epoch=epoch,
+                    )
                 elif isinstance(host_data, dict):
-                    host_id = self._create_host_record(conn, ip=host_data.get('ip', ''),
-                                                       hostname=host_data.get('hostname', ''),
-                                                       data=host_data, ts=ts, epoch=epoch)
+                    host_id = self._ensure_host_record(
+                        conn, ip=host_data.get('ip', ''),
+                        hostname=host_data.get('hostname', ''),
+                        data=host_data, ts=ts, epoch=epoch,
+                    )
 
             # If data contains service info, create service record
             services = data.get('services', data.get('open_ports', []))
@@ -607,6 +619,37 @@ class Boneyard:
         self._write_audit_entry(conn, 'INSERT', 'hosts', host_id, 'boneyard._route',
                                 'auto-route host from finding data', None, {'id': host_id})
         return host_id
+
+    def _ensure_host_record(self, conn: sqlite3.Connection, ip: str = '',
+                            hostname: str = '', data: Dict = None,
+                            ts: str = '', epoch: float = 0.0) -> str:
+        """Reuse a host inside an existing transaction or create it.
+
+        The structured finding router already owns a SQLite transaction, so
+        calling public ``ensure_host`` would open a competing connection. The
+        cross-column matches also recognize rows produced by older builds that
+        placed hostname strings in ``ip_address``.
+        """
+        clauses: List[str] = []
+        params: List[str] = []
+        if ip:
+            clauses.append("(ip_address = ? OR hostname = ?)")
+            params.extend((str(ip), str(ip)))
+        if hostname:
+            clauses.append("(hostname = ? OR ip_address = ?)")
+            params.extend((str(hostname), str(hostname)))
+        if clauses:
+            row = conn.execute(
+                "SELECT id FROM hosts WHERE deleted = 0 AND ("
+                + " OR ".join(clauses)
+                + ") ORDER BY epoch ASC LIMIT 1",
+                params,
+            ).fetchone()
+            if row:
+                return str(row[0])
+        return self._create_host_record(
+            conn, ip=ip, hostname=hostname, data=data or {}, ts=ts, epoch=epoch,
+        )
 
     def _create_service_record(self, conn: sqlite3.Connection, host_id: str,
                                svc: Dict, ts: str, epoch: float) -> str:
@@ -770,6 +813,7 @@ class Boneyard:
             return {
                 'id': row['id'],
                 'category': row['category'],
+                'title': row['title'] or data.get('title'),
                 'data': data,
                 'tags': json.loads(row['tags_json']),
                 'host_id': row['host_id'],
@@ -826,7 +870,7 @@ class Boneyard:
         conn = self._get_conn()
         try:
             # Build parameterized query
-            sql = """SELECT id, category, title, data_json, tags_json, risk_score,
+            sql = """SELECT id, category, title, data_json, tags_json, host_id, risk_score,
                             created_at, epoch
                      FROM findings WHERE deleted = 0"""
             params = []
@@ -859,8 +903,10 @@ class Boneyard:
                 results.append({
                     'id': row['id'],
                     'category': row['category'],
+                    'title': row['title'] or data.get('title'),
                     'data': data,
                     'tags': json.loads(row['tags_json']),
+                    'host_id': row['host_id'],
                     'risk_score': row['risk_score'],
                     'timestamp': row['created_at'],
                     'epoch': row['epoch'],
@@ -1074,8 +1120,10 @@ class Boneyard:
                 data = self._decrypt_data(row['data_json'])
                 results.append({
                     'id': row['id'], 'category': row['category'],
+                    'title': row['title'] or data.get('title'),
                     'data': data,
                     'tags': json.loads(row['tags_json']),
+                    'host_id': row['host_id'],
                     'risk_score': row['risk_score'],
                     'timestamp': row['created_at'],
                     'epoch': row['epoch'],
@@ -1113,27 +1161,11 @@ class Boneyard:
         conn = None
         try:
             conn = self._get_conn()
-            # Match on ip or hostname (whichever is provided).
-            clauses, params = [], []
-            if ip:
-                clauses.append("ip_address = ?")
-                params.append(str(ip))
-            if hostname:
-                clauses.append("hostname = ?")
-                params.append(str(hostname))
-            if clauses:
-                row = conn.execute(
-                    "SELECT id FROM hosts WHERE deleted = 0 AND ("
-                    + " OR ".join(clauses) + ") ORDER BY epoch ASC LIMIT 1",
-                    params,
-                ).fetchone()
-                if row:
-                    return row[0]
-            # Not found — create it. Use the pinned epoch when provided.
             epoch_val = epoch if epoch is not None else time.time()
             ts = datetime.fromtimestamp(epoch_val, tz=timezone.utc).isoformat()
-            return self._create_host_record(conn, ip=ip, hostname=hostname,
-                                            data=data, ts=ts, epoch=epoch_val)
+            return self._ensure_host_record(
+                conn, ip=ip, hostname=hostname, data=data, ts=ts, epoch=epoch_val,
+            )
         except sqlite3.Error as e:
             logger.error(f"ensure_host failed: {e}")
             raise

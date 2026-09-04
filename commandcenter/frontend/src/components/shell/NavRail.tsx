@@ -1,13 +1,17 @@
-import { NAV_ITEMS, useUiStore, type ViewId } from '../../store/ui'
+import { NAV_ITEMS, VIEW_PATHS, useUiStore, type ViewId } from '../../store/ui'
 
 export function NavRail() {
   const view = useUiStore((s) => s.view)
   const setView = useUiStore((s) => s.setView)
+  const open = useUiStore((s) => s.mobileNavOpen)
 
   return (
     <nav
-      className="shrink-0 border-r border-void-line bg-void-panel flex flex-col py-2"
-      style={{ width: 232 }}
+      id="primary-navigation"
+      aria-label="Primary navigation"
+      className={`nav-rail shrink-0 border-r border-void-line bg-void-panel flex flex-col py-2 ${
+        open ? 'nav-rail-open' : ''
+      }`}
     >
       <div className="px-3 pb-2 text-[10px] uppercase tracking-wider text-void-text-mute">
         Navigation
@@ -15,10 +19,24 @@ export function NavRail() {
       {NAV_ITEMS.map((item) => {
         const active = view === item.id
         return (
-          <button
+          <a
             key={item.id}
-            type="button"
-            onClick={() => setView(item.id as ViewId)}
+            href={VIEW_PATHS[item.id]}
+            aria-current={active ? 'page' : undefined}
+            onClick={(event) => {
+              if (
+                event.button !== 0 ||
+                event.metaKey ||
+                event.ctrlKey ||
+                event.shiftKey ||
+                event.altKey
+              ) {
+                return
+              }
+              event.preventDefault()
+              setView(item.id as ViewId)
+              window.setTimeout(() => document.getElementById('main-content')?.focus(), 0)
+            }}
             className={`mx-2 mb-0.5 flex items-center gap-2 px-2 py-1.5 rounded text-left text-[12px] border ${
               active
                 ? 'bg-void-elevated border-void-line text-void-text'
@@ -32,11 +50,11 @@ export function NavRail() {
               {item.short}
             </span>
             <span>{item.label}</span>
-          </button>
+          </a>
         )
       })}
       <div className="mt-auto px-3 pt-3 border-t border-void-line text-[10px] text-void-text-mute">
-        localhost:7070 · single-op
+        Local console · single operator
       </div>
     </nav>
   )

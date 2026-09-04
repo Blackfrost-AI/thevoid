@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Panel, Stat, EmptyState } from '../components/common/Panel'
+import { Panel, Stat, EmptyState, ErrorState } from '../components/common/Panel'
 import { useUiStore } from '../store/ui'
 import { fmtEpoch, fmtTs } from '../utils/format'
 import { api } from '../api/client'
@@ -57,7 +57,7 @@ export function DriftView() {
 
   return (
     <div className="h-full flex flex-col gap-3">
-      <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
         <Panel title="Continuity Drift (R-3)">
           <div className="flex flex-wrap gap-5">
             <Stat label="Events" value={data?.count ?? '—'} tone={data?.count ? 'warning' : undefined} />
@@ -67,11 +67,12 @@ export function DriftView() {
             Drift events are persisted by the ContinuityScheduler into the Boneyard when a target's
             engagement state diverges from expectations.
           </div>
-          {error ? <div className="mt-2 text-[11px] text-void-error">{error}</div> : null}
         </Panel>
 
         <Panel title="Latest Event" className="xl:col-span-3">
-          {data && data.events.length > 0 ? (
+          {error ? (
+            <ErrorState message={error} onRetry={load} />
+          ) : data && data.events.length > 0 ? (
             <div className="flex flex-wrap gap-5 items-baseline">
               <span className="mono text-[15px] text-void-warning">
                 {data.events[0].data?.target || String(data.events[0].id)}
@@ -102,7 +103,11 @@ export function DriftView() {
           </button>
         }
       >
-        {!data ? (
+        {error ? (
+          <div className="p-3">
+            <ErrorState message={error} onRetry={load} />
+          </div>
+        ) : !data ? (
           <div className="p-3">
             <EmptyState message={busy ? 'Loading drift events…' : 'Loading…'} />
           </div>
@@ -128,6 +133,13 @@ export function DriftView() {
                   key={String(ev.id)}
                   className="drift-row cursor-pointer"
                   onClick={() => inspect(ev)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault()
+                      inspect(ev)
+                    }
+                  }}
+                  tabIndex={0}
                 >
                   <td className="mono text-void-text-dim">
                     {ev.timestamp ? fmtTs(ev.timestamp) : fmtEpoch(ev.epoch)}

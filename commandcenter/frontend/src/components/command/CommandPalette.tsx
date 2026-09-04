@@ -15,6 +15,9 @@ export function CommandPalette() {
   const [q, setQ] = useState('')
   const [idx, setIdx] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
+  const dialogRef = useRef<HTMLDivElement>(null)
+  const previousFocus = useRef<HTMLElement | null>(null)
+  const wasOpen = useRef(false)
 
   const items: CommandItem[] = useMemo(() => {
     const nav: CommandItem[] = NAV_ITEMS.map((n) => ({
@@ -38,12 +41,15 @@ export function CommandPalette() {
       },
       {
         id: 'act-export-warlog',
-        label: 'Export WarLog',
+        label: 'Download WarLog JSON',
         group: 'Actions',
         action: () => {
           setView('warlog')
           setOpen(false)
-          window.dispatchEvent(new CustomEvent('void:export-warlog'))
+          window.setTimeout(
+            () => window.dispatchEvent(new CustomEvent('void:export-warlog')),
+            0,
+          )
         },
       },
       {
@@ -68,11 +74,16 @@ export function CommandPalette() {
   }, [items, q])
 
   useEffect(() => {
-    if (open) {
+    if (open && !wasOpen.current) {
+      previousFocus.current = document.activeElement as HTMLElement | null
       setQ('')
       setIdx(0)
       setTimeout(() => inputRef.current?.focus(), 0)
+    } else if (!open && wasOpen.current) {
+      previousFocus.current?.focus()
+      previousFocus.current = null
     }
+    wasOpen.current = open
   }, [open])
 
   useEffect(() => {
@@ -102,11 +113,36 @@ export function CommandPalette() {
       onClick={() => setOpen(false)}
     >
       <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Search and commands"
         className="w-full max-w-lg rounded-md border border-void-line bg-void-elevated shadow-2xl overflow-hidden"
         onClick={(e) => e.stopPropagation()}
+        onKeyDown={(event) => {
+          if (event.key !== 'Tab') return
+          const focusable = dialogRef.current?.querySelectorAll<HTMLElement>(
+            'input:not([disabled]), button:not([disabled]), [tabindex]:not([tabindex="-1"])',
+          )
+          if (!focusable?.length) return
+          const first = focusable[0]
+          const last = focusable[focusable.length - 1]
+          if (event.shiftKey && document.activeElement === first) {
+            event.preventDefault()
+            last.focus()
+          } else if (!event.shiftKey && document.activeElement === last) {
+            event.preventDefault()
+            first.focus()
+          }
+        }}
       >
         <input
           ref={inputRef}
+          role="combobox"
+          aria-expanded="true"
+          aria-controls="command-options"
+          aria-activedescendant={filtered[idx] ? `command-${filtered[idx].id}` : undefined}
+          aria-label="Search views and actions"
           className="void-input w-full border-0 border-b border-void-line rounded-none px-4 py-3 text-[14px] bg-transparent"
           placeholder="Jump to view, run action…"
           value={q}
@@ -123,14 +159,17 @@ export function CommandPalette() {
             }
           }}
         />
-        <ul className="max-h-72 overflow-auto py-1">
+        <ul id="command-options" className="max-h-72 overflow-auto py-1" role="listbox" aria-label="Commands">
           {filtered.length === 0 ? (
             <li className="px-4 py-3 text-void-text-mute text-[12px]">No matches</li>
           ) : (
             filtered.map((item, i) => (
               <li key={item.id}>
                 <button
+                  id={`command-${item.id}`}
                   type="button"
+                  role="option"
+                  aria-selected={i === idx}
                   className={`w-full text-left px-4 py-2 text-[12px] flex justify-between ${
                     i === idx ? 'bg-void-panel text-void-text' : 'text-void-text-dim hover:bg-void-panel'
                   }`}

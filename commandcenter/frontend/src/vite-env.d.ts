@@ -11,6 +11,8 @@ declare module 'react-force-graph-2d' {
 
   export interface ForceGraphProps {
     ref?: MutableRefObject<ForceGraphMethods | undefined>
+    width?: number
+    height?: number
     graphData: { nodes: object[]; links: object[] }
     nodeId?: string
     linkSource?: string
@@ -20,6 +22,9 @@ declare module 'react-force-graph-2d' {
     nodeCanvasObject?: (node: object, ctx: CanvasRenderingContext2D, globalScale: number) => void
     onNodeClick?: (node: object, event: MouseEvent) => void
     cooldownTicks?: number
+    dagMode?: 'td' | 'bu' | 'lr' | 'rl' | 'radialout' | 'radialin' | null
+    dagLevelDistance?: number
+    onEngineStop?: () => void
     linkDirectionalArrowLength?: number
     linkDirectionalArrowRelPos?: number
   }

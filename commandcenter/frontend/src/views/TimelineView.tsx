@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '../api/client'
-import { Panel, EmptyState, LoadingState } from '../components/common/Panel'
+import { Panel, EmptyState, ErrorState, LoadingState } from '../components/common/Panel'
 import { useUiStore } from '../store/ui'
 import { useEngagementStore } from '../store/engagement'
+import { useWsStore } from '../store/websocket'
 
 type Step = {
   id: string
   host_id?: string
+  host_name?: string
   parent_step_id?: string
   step_type?: string
   technique?: string
@@ -47,8 +49,8 @@ function toEpoch(created_at?: string): number {
 
 export function TimelineView() {
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [hostFilter, setHostFilter] = useState('')
-  const [live, setLive] = useState(false)
   const [t, setT] = useState<number | null>(null) // playhead epoch
   const [playing, setPlaying] = useState(false)
   const [speed, setSpeed] = useState(1)
@@ -60,13 +62,18 @@ export function TimelineView() {
   const pulseIds = useEngagementStore((s) => s.pulseIds)
   const lastNodeEvent = useEngagementStore((s) => s.lastNodeEvent)
   const applyAttackGraphFull = useEngagementStore((s) => s.applyAttackGraphFull)
+  const live = useWsStore((s) => s.state) === 'connected'
 
   const load = useCallback(() => {
     setLoading(true)
+    setError(null)
     api
       .attackGraph()
       .then((g) => applyAttackGraphFull(g))
-      .catch(() => applyAttackGraphFull({ nodes: [], edges: [], outcomes: [] }))
+      .catch((reason) => {
+        setError(reason instanceof Error ? reason.message : String(reason))
+        applyAttackGraphFull({ nodes: [], edges: [], outcomes: [] })
+      })
       .finally(() => setLoading(false))
   }, [applyAttackGraphFull])
 
@@ -74,21 +81,26 @@ export function TimelineView() {
     load()
   }, [load])
 
-  useEffect(() => {
-    if (storeGraph && !loading) setLive(true)
-  }, [storeGraph, loading])
-
   // Ordered, filtered steps with computed epoch.
   const steps = useMemo<Step[]>(() => {
     const raw = (storeGraph?.nodes || []) as Array<Record<string, unknown>>
+    const outcomeByNode = new Map<string, string>()
+    for (const outcome of (storeGraph?.outcomes || []) as Array<Record<string, unknown>>) {
+      const id = String(outcome.attack_path_id || '')
+      if (!id || !Object.hasOwn(outcome, 'success')) continue
+      if (outcome.success === true || outcome.success === 1) outcomeByNode.set(id, 'success')
+      else if (!outcomeByNode.has(id)) outcomeByNode.set(id, 'failed')
+    }
     const list: Step[] = raw
       .map((n) => ({
         id: String(n.id ?? ''),
         host_id: n.host_id as string | undefined,
+        host_name: n.host_name as string | undefined,
         parent_step_id: n.parent_step_id as string | undefined,
         step_type: n.step_type as string | undefined,
         technique: n.technique as string | undefined,
-        outcome_status: n.outcome_status as string | undefined,
+        outcome_status:
+          outcomeByNode.get(String(n.id ?? '')) || (n.outcome_status as string | undefined),
         created_at: n.created_at as string | undefined,
         epoch: toEpoch(n.created_at as string | undefined),
       }))
@@ -96,6 +108,15 @@ export function TimelineView() {
     const filtered = hostFilter ? list.filter((s) => s.host_id === hostFilter) : list
     return filtered.sort((a, b) => a.epoch - b.epoch || a.id.localeCompare(b.id))
   }, [storeGraph, hostFilter])
+
+  const hostOptions = useMemo(() => {
+    const hosts = new Map<string, string>()
+    for (const node of (storeGraph?.nodes || []) as Array<Record<string, unknown>>) {
+      const id = String(node.host_id || '')
+      if (id) hosts.set(id, String(node.host_name || id))
+    }
+    return [...hosts.entries()].sort((a, b) => a[1].localeCompare(b[1]))
+  }, [storeGraph])
 
   // Time window.
   const win = useMemo(() => {
@@ -106,14 +127,15 @@ export function TimelineView() {
     return { min: min - pad, max: max + pad }
   }, [steps])
 
-  // Reset playhead to start whenever the window changes and no explicit t.
+  // Open on the complete evidence trail. Playback explicitly rewinds first,
+  // which is less confusing than making an existing engagement look empty.
   useEffect(() => {
     if (steps.length === 0) {
       setT(null)
       setPlaying(false)
       return
     }
-    setT((prev) => (prev == null ? win.min : Math.min(Math.max(prev, win.min), win.max)))
+    setT((prev) => (prev == null ? win.max : Math.min(Math.max(prev, win.min), win.max)))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [win.min, win.max, steps.length])
 
@@ -162,7 +184,8 @@ export function TimelineView() {
           { label: 'Phase', value: s.step_type },
           { label: 'Technique', value: s.technique },
           { label: 'Outcome', value: s.outcome_status },
-          { label: 'Host', value: s.host_id },
+          { label: 'Host', value: s.host_name || s.host_id },
+          { label: 'Host ID', value: s.host_id },
           { label: 'Parent step', value: s.parent_step_id },
           { label: 'At', value: s.created_at },
         ],
@@ -213,12 +236,17 @@ export function TimelineView() {
           >
             {live ? 'LIVE' : 'snapshot'}
           </span>
-          <input
-            className="void-input w-40"
-            placeholder="Host ID filter"
+          <select
+            className="void-input max-w-52"
+            aria-label="Filter timeline by host"
             value={hostFilter}
             onChange={(e) => setHostFilter(e.target.value)}
-          />
+          >
+            <option value="">All hosts</option>
+            {hostOptions.map(([id, name]) => (
+              <option key={id} value={id}>{name}</option>
+            ))}
+          </select>
           <button type="button" className="void-btn primary" onClick={load}>
             Reload
           </button>
@@ -229,6 +257,10 @@ export function TimelineView() {
         <div className="p-3">
           <LoadingState />
         </div>
+      ) : error ? (
+        <div className="p-3">
+          <ErrorState message={error} onRetry={load} />
+        </div>
       ) : steps.length === 0 ? (
         <div className="p-3">
           <EmptyState message="No attack-path steps yet. The kill-chain timeline fills in live as the agent records engagement phases." />
@@ -236,7 +268,7 @@ export function TimelineView() {
       ) : (
         <div className="flex-1 min-h-0 flex flex-col gap-3 p-3 overflow-auto">
           {/* Kill-chain lane header */}
-          <div className="grid gap-1" style={{ gridTemplateColumns: `repeat(${KILL_CHAIN.length}, minmax(0,1fr))` }}>
+          <div className="timeline-wide grid gap-1" style={{ gridTemplateColumns: `repeat(${KILL_CHAIN.length}, minmax(0,1fr))` }}>
             {KILL_CHAIN.map((ph) => {
               const agg = phaseAgg[ph.id]
               const active = (agg?.count || 0) > 0
@@ -268,7 +300,7 @@ export function TimelineView() {
           </div>
 
           {/* Playback controls */}
-          <div className="flex items-center gap-2">
+          <div className="timeline-wide flex flex-wrap items-center gap-2">
             <button
               type="button"
               className="void-btn primary"
@@ -277,7 +309,7 @@ export function TimelineView() {
                 setPlaying((p) => !p)
               }}
             >
-              {playing ? 'Pause' : 'Play'}
+              {playing ? 'Pause' : t != null && t >= win.max - 0.001 ? 'Replay' : 'Play'}
             </button>
             <button
               type="button"
@@ -299,7 +331,7 @@ export function TimelineView() {
             >
               End ⏭
             </button>
-            <select className="void-input w-20" value={speed} onChange={(e) => setSpeed(Number(e.target.value))}>
+            <select aria-label="Timeline playback speed" className="void-input w-20" value={speed} onChange={(e) => setSpeed(Number(e.target.value))}>
               <option value={0.5}>0.5×</option>
               <option value={1}>1×</option>
               <option value={2}>2×</option>
@@ -311,7 +343,7 @@ export function TimelineView() {
           </div>
 
           {/* Timeline strip */}
-          <div className="relative flex-1 min-h-[180px] rounded border border-void-line bg-void-bg overflow-hidden">
+          <div className="timeline-wide relative flex-1 min-h-[180px] rounded border border-void-line bg-void-bg overflow-hidden">
             {/* axis */}
             <div className="absolute left-3 right-3 bottom-6 top-3">
               {/* playhead */}
@@ -329,7 +361,7 @@ export function TimelineView() {
                   <button
                     key={s.id}
                     type="button"
-                    title={`${s.step_type || '?'} · ${s.technique || ''} · ${s.outcome_status || ''}`}
+                    title={`${s.host_name || s.host_id || 'unknown host'} · ${s.step_type || '?'} · ${s.technique || ''} · ${s.outcome_status || ''}`}
                     onClick={() => onStepClick(s)}
                     className="absolute -translate-x-1/2 bottom-0 flex flex-col items-center focus:outline-none"
                     style={{ left: `${pct}%` }}
@@ -362,6 +394,7 @@ export function TimelineView() {
           {/* Scrubber */}
           <input
             type="range"
+            aria-label="Timeline playhead"
             min={0}
             max={1000}
             value={Math.round(playheadPct * 10)}
@@ -370,7 +403,7 @@ export function TimelineView() {
               const f = Number(e.target.value) / 1000
               setT(win.min + f * (win.max - win.min))
             }}
-            className="w-full accent-[#6F89A3]"
+            className="timeline-wide w-full accent-[#6F89A3]"
           />
         </div>
       )}

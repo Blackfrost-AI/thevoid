@@ -49,7 +49,7 @@ def client(stores):
     from commandcenter.backend.main import create_app
 
     app = create_app()
-    with TestClient(app) as c:
+    with TestClient(app, base_url="http://127.0.0.1:7070") as c:
         yield c
 
 

@@ -1,6 +1,6 @@
 # THE VOID — Command Center
 
-Localhost-only operator console for THE VOID red team platform. Palantir-style dark theme, real-time WarLog stream, Boneyard intelligence, attack graph, C2 monitoring, and report generation.
+Localhost-only operator console for THE VOID red team platform. Dense dark operator theme, real-time WarLog stream, Boneyard intelligence, attack graph, C2 evidence, and report generation.
 
 **Binding:** `127.0.0.1:7070` only. No multi-tenant, no cloud, no external network.
 
@@ -23,30 +23,30 @@ PYTHONPATH=. python -m commandcenter.backend.main
 ## Architecture
 
 ```
-Browser ──REST/WS──► FastAPI (bridge) ──► Boneyard / WarLog / ChaosEngine / MCPC2 / Reporter
+Browser ──REST/WS──► FastAPI projection ──► Boneyard / WarLog / Reporter
 ```
 
-- **Read-mostly** against existing SQLite stores
-- **WebSocket** pollers push WarLog, C2, engagement, metrics, integrity diffs
-- **No modification** of core VOID modules — import-only bridge layer
+- **Visual-first, read-mostly** workflow against existing SQLite stores
+- **WebSocket** pollers push WarLog, C2 evidence, engagement, metrics, integrity, and graph diffs
+- Completed engagements and channel evidence remain visible across process restarts
 - Secrets (`auth`, tokens, HMACs) stripped from API responses
 
 ## Views
 
 | View | Purpose |
 |------|---------|
-| Operations | Engagement status, live WarLog, C2 health, MITRE heatmap, event-rate sparkline |
+| Operations | Engagement status, live WarLog, C2 activity, MITRE heatmap, event-rate sparkline |
 | Targets | Host table from `Boneyard.query_hosts()` |
 | Boneyard | Findings, search, categories, integrity badge |
-| Attack Graph | Force-directed `graph_attack_paths()` |
-| C2 Channels | `MCPC2.list_channels()` + health checks |
+| Attack Graph | Directed, outcome-aware `graph_attack_paths()` visualization |
+| C2 Channels | Live channel state when injected plus restart-safe recorded evidence |
 | WarLog | Filtered event table + export |
 | Reports | `Reporter.generate()` JSON / Markdown / HTML |
 | Timeline | Chronological engagement-phase evidence |
 | Prevention | Coverage score and control effectiveness |
-| Compliance | Authorization and policy posture |
+| Compliance | MITRE-to-framework advisory cross-reference |
 | Drift | Changes between recorded runs |
-| ⌘K | Command palette for navigation & actions |
+| Ctrl+K | Command palette for navigation & actions |
 
 ## API
 
@@ -67,9 +67,16 @@ python -m pytest commandcenter/tests/backend/ -v
 | Control | Detail |
 |---------|--------|
 | Localhost bind | Asserted at startup; rejects `0.0.0.0` |
-| No egress | No outbound telemetry; deps bundled |
+| Browser boundary | Loopback Host allowlist plus Origin checks on mutations and WebSockets |
+| Browser hardening | CSP, frame denial, no-referrer, MIME sniffing, and permissions headers |
+| No telemetry | No outbound analytics or hosted service dependency |
 | No secrets in browser | Response sanitizer strips credentials / HMACs |
 | Write path | Report/export only; no attack initiation |
+
+This release visualizes, investigates, and exports validation evidence. It
+does not launch validation jobs; a future visual runner needs an explicit
+scope, authorization, approval, and cancellation workflow before it replaces
+that remaining operator path.
 
 ## Stack
 

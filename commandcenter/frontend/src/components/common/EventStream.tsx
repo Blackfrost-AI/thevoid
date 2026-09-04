@@ -128,6 +128,13 @@ export function EventStream({
                 <tr
                   key={key}
                   onClick={() => onSelect(e)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault()
+                      onSelect(e)
+                    }
+                  }}
+                  tabIndex={0}
                   className={[sev, isFresh ? 'fresh' : '', isSel ? 'selected' : '']
                     .filter(Boolean)
                     .join(' ')}

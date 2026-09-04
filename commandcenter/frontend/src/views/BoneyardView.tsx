@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api, type Finding } from '../api/client'
-import { Panel, EmptyState, LoadingState, Stat } from '../components/common/Panel'
+import { Panel, EmptyState, ErrorState, LoadingState, Stat } from '../components/common/Panel'
 import { useUiStore } from '../store/ui'
 import { trunc } from '../utils/format'
 
@@ -12,15 +12,17 @@ export function BoneyardView() {
   const [category, setCategory] = useState('')
   const [query, setQuery] = useState('')
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const selectedId = useUiStore((s) => s.selectedId)
   const setSelectedId = useUiStore((s) => s.setSelectedId)
   const openInspector = useUiStore((s) => s.openInspector)
 
-  const load = async () => {
+  const load = async (selectedCategory = category) => {
     setLoading(true)
+    setError(null)
     try {
       const params: Record<string, string> = { limit: '300' }
-      if (category) params.category = category
+      if (selectedCategory) params.category = selectedCategory
       let rows: Finding[]
       if (query.trim()) {
         const r = await api.searchFindings(query.trim(), params)
@@ -38,8 +40,8 @@ export function BoneyardView() {
       setSummary(sum)
       setCategories(cats.categories)
       setIntegrity(integ)
-    } catch {
-      /* keep prior */
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason))
     } finally {
       setLoading(false)
     }
@@ -68,7 +70,7 @@ export function BoneyardView() {
 
   return (
     <div className="h-full flex flex-col gap-3">
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         <Panel title="Inventory">
           <div className="flex gap-6">
             <Stat label="Items" value={summary?.total_items ?? '—'} tone="info" />
@@ -97,6 +99,7 @@ export function BoneyardView() {
                   className="badge"
                   onClick={() => {
                     setCategory(c)
+                    void load(c)
                   }}
                   title={c}
                 >
@@ -115,6 +118,7 @@ export function BoneyardView() {
           <>
             <input
               className="void-input w-52"
+              aria-label="Search findings"
               placeholder="Full-text search…"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
@@ -122,6 +126,7 @@ export function BoneyardView() {
             />
             <select
               className="void-input"
+              aria-label="Filter findings by category"
               value={category}
               onChange={(e) => setCategory(e.target.value)}
             >
@@ -132,14 +137,16 @@ export function BoneyardView() {
                 </option>
               ))}
             </select>
-            <button type="button" className="void-btn primary" onClick={load}>
+            <button type="button" className="void-btn primary" onClick={() => void load()}>
               Search
             </button>
           </>
         }
       >
         {loading ? <div className="p-3"><LoadingState /></div> : null}
-        {!loading && findings.length === 0 ? (
+        {!loading && error ? (
+          <div className="p-3"><ErrorState message={error} onRetry={() => void load()} /></div>
+        ) : !loading && findings.length === 0 ? (
           <div className="p-3"><EmptyState message="No findings match filters." /></div>
         ) : (
           <div className="overflow-auto flex-1">
@@ -159,6 +166,13 @@ export function BoneyardView() {
                     key={String(f.id)}
                     className={selectedId === String(f.id) ? 'selected' : ''}
                     onClick={() => onSelect(f)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault()
+                        onSelect(f)
+                      }
+                    }}
+                    tabIndex={0}
                     style={{ cursor: 'pointer' }}
                   >
                     <td>{trunc(f.category, 36)}</td>

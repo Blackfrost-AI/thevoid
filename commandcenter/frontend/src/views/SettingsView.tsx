@@ -42,6 +42,8 @@ export function SettingsView() {
               boneyard_items: status?.boneyard_items,
               warlog_entries: status?.warlog_entries,
               c2_channels: status?.c2_channels,
+              c2_active_channels: status?.c2_active_channels,
+              c2_recorded_channels: status?.c2_recorded_channels,
             },
             null,
             2,
@@ -51,9 +53,9 @@ export function SettingsView() {
 
       <Panel title="About">
         <p className="text-[12px] text-void-text-dim leading-relaxed">
-          THE VOID Command Center is a read-mostly situational awareness console. It does not
-          initiate attacks. It monitors WarLog, Boneyard, C2, and ChaosEngine state on the local
-          machine for authorized security validation.
+          THE VOID Command Center is a visual-first evidence and situational-awareness console.
+          It monitors persisted engagements, WarLog, Boneyard, C2 evidence, and reports on this
+          machine. Validation-job launch and approval controls are not part of this release.
         </p>
       </Panel>
     </div>

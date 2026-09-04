@@ -62,5 +62,4 @@ def load_settings() -> Settings:
     port = int(os.environ.get("VOID_CC_PORT", "7070"))
     settings = Settings(host=host, port=port)
     settings.assert_localhost()
-    settings.export_dir.mkdir(parents=True, exist_ok=True)
     return settings

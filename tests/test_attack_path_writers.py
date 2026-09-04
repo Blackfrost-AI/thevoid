@@ -54,6 +54,28 @@ class TestEnsureHost:
         b = boneyard.ensure_host(ip="10.0.0.2")
         assert a != b
 
+    def test_structured_findings_reuse_hostname_host(self, boneyard):
+        host_id = boneyard.ensure_host(
+            ip="203.0.113.20", hostname="stage-dc01.demo.invalid"
+        )
+        finding_id = boneyard.store(
+            "attack_stage_dc",
+            {"title": "Completed validation", "target": "stage-dc01.demo.invalid"},
+        )
+
+        hosts = list(boneyard.query_hosts())
+        finding = boneyard.get(finding_id)
+        assert len(hosts) == 1
+        assert hosts[0]["id"] == host_id
+        assert hosts[0]["hostname"] == "stage-dc01.demo.invalid"
+        assert finding["host_id"] == host_id
+
+    def test_structured_hostname_is_not_stored_as_ip(self, boneyard):
+        boneyard.store("recon", {"target": "web01.example.invalid"})
+        host = list(boneyard.query_hosts())[0]
+        assert host["ip_address"] == ""
+        assert host["hostname"] == "web01.example.invalid"
+
 
 # ─── record_attack_step ──────────────────────────────────────────────────────
 

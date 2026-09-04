@@ -16,10 +16,11 @@ _ROOT = Path(__file__).resolve().parents[2]
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-from fastapi import FastAPI, WebSocket
+from fastapi import FastAPI, Request, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from commandcenter.backend.config import load_settings
 from commandcenter.backend.routers import (
@@ -87,13 +88,57 @@ def create_app() -> FastAPI:
         openapi_url="/api/openapi.json",
     )
 
+    allowed_origins = set(settings.cors_origins)
+    allowed_origins.update(
+        {
+            f"http://127.0.0.1:{settings.port}",
+            f"http://localhost:{settings.port}",
+        }
+    )
+
+    app.add_middleware(
+        TrustedHostMiddleware,
+        allowed_hosts=["127.0.0.1", "localhost", "[::1]"],
+        www_redirect=False,
+    )
+
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=list(settings.cors_origins),
+        allow_origins=sorted(allowed_origins),
         allow_credentials=True,
         allow_methods=["GET", "POST", "OPTIONS"],
         allow_headers=["*"],
     )
+
+    @app.middleware("http")
+    async def protect_local_browser_boundary(request: Request, call_next):
+        """Block cross-site mutations and add browser hardening headers."""
+        origin = request.headers.get("origin")
+        if (
+            request.method in {"POST", "PUT", "PATCH", "DELETE"}
+            and origin
+            and origin not in allowed_origins
+        ):
+            return JSONResponse(
+                {"detail": "Cross-origin mutation rejected"},
+                status_code=403,
+            )
+
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = "no-referrer"
+        response.headers["Permissions-Policy"] = (
+            "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
+        )
+        if not request.url.path.startswith("/api/"):
+            response.headers["Content-Security-Policy"] = (
+                "default-src 'self'; base-uri 'none'; object-src 'none'; "
+                "frame-ancestors 'none'; form-action 'self'; "
+                "script-src 'self'; style-src 'self' 'unsafe-inline'; "
+                "img-src 'self' data:; font-src 'self'; connect-src 'self'"
+            )
+        return response
 
     # REST routers
     app.include_router(status.router)
@@ -118,6 +163,10 @@ def create_app() -> FastAPI:
 
     @app.websocket("/ws/live")
     async def ws_live(websocket: WebSocket):
+        origin = websocket.headers.get("origin")
+        if origin and origin not in allowed_origins:
+            await websocket.close(code=1008, reason="Origin not allowed")
+            return
         await websocket_endpoint(websocket)
 
     # Production: serve frontend static build if present

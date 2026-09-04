@@ -11,6 +11,7 @@ import { Panel, Stat, EmptyState } from '../components/common/Panel'
 import { EventStream } from '../components/common/EventStream'
 import { useEngagementStore } from '../store/engagement'
 import { useUiStore } from '../store/ui'
+import { useDemoStore } from '../store/demo'
 import { levelClass, trunc } from '../utils/format'
 import { api } from '../api/client'
 import type { MitreResponse, MitreTechnique } from '../types/insights'
@@ -38,20 +39,35 @@ export function DashboardView() {
   const metricsHistory = useEngagementStore((s) => s.metricsHistory)
   const metrics = useEngagementStore((s) => s.metrics)
   const openInspector = useUiStore((s) => s.openInspector)
+  const setView = useUiStore((s) => s.setView)
+  const demoActive = useDemoStore((s) => s.active)
+  const demoBusy = useDemoStore((s) => s.busy)
+  const toggleDemo = useDemoStore((s) => s.toggle)
   const [seedEntries, setSeedEntries] = useState<typeof live>([])
   const [levelCounts, setLevelCounts] = useState<Record<string, number>>({})
   const [mitre, setMitre] = useState<MitreResponse | null>(null)
   const [prevention, setPrevention] = useState<number | null>(null)
+  const [insightError, setInsightError] = useState<string | null>(null)
 
-  const loadInsights = useCallback(() => {
-    api
-      .mitre()
-      .then(setMitre)
-      .catch(() => setMitre(null))
-    api
-      .coverage()
-      .then((c) => setPrevention(typeof c.aggregated === 'number' ? c.aggregated : null))
-      .catch(() => setPrevention(null))
+  const loadInsights = useCallback(async () => {
+    const [mitreResult, coverageResult] = await Promise.allSettled([
+      api.mitre(),
+      api.coverage(),
+    ])
+    const failures: string[] = []
+    if (mitreResult.status === 'fulfilled') setMitre(mitreResult.value)
+    else {
+      setMitre(null)
+      failures.push(String(mitreResult.reason))
+    }
+    if (coverageResult.status === 'fulfilled') {
+      const score = coverageResult.value.aggregated
+      setPrevention(typeof score === 'number' ? score : null)
+    } else {
+      setPrevention(null)
+      failures.push(String(coverageResult.reason))
+    }
+    setInsightError(failures.length ? failures.join(' · ') : null)
   }, [])
 
   useEffect(() => {
@@ -60,8 +76,8 @@ export function DashboardView() {
   }, [])
 
   useEffect(() => {
-    loadInsights()
-    const t = setInterval(loadInsights, REFRESH_MS)
+    void loadInsights()
+    const t = setInterval(() => void loadInsights(), REFRESH_MS)
     return () => clearInterval(t)
   }, [loadInsights])
 
@@ -105,7 +121,35 @@ export function DashboardView() {
 
   return (
     <div className="h-full flex flex-col gap-3">
-      <div className="grid grid-cols-2 xl:grid-cols-5 gap-3">
+      {status &&
+      !demoActive &&
+      (status?.target_count ?? 0) === 0 &&
+      (status?.warlog_entries ?? 0) === 0 &&
+      (status?.boneyard_items ?? 0) === 0 ? (
+        <section className="onboarding-card shrink-0 rounded border border-void-info/40 bg-void-info/5 px-4 py-3 flex flex-wrap items-center gap-4">
+          <div className="min-w-0 flex-1">
+            <h1 className="text-[14px] font-semibold">Command Center is ready</h1>
+            <p className="mt-1 text-[12px] text-void-text-dim">
+              No local evidence has been recorded yet. Explore the isolated walkthrough, or
+              connect an authorized validation run to populate this workspace.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              className="void-btn primary"
+              disabled={demoBusy}
+              onClick={() => void toggleDemo()}
+            >
+              {demoBusy ? 'Loading…' : 'Explore Demo'}
+            </button>
+            <button type="button" className="void-btn" onClick={() => setView('settings')}>
+              View setup
+            </button>
+          </div>
+        </section>
+      ) : null}
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-3">
         <Panel title="Engagement Status">
           <div className="flex flex-wrap gap-4">
             <Stat
@@ -125,12 +169,12 @@ export function DashboardView() {
           </div>
         </Panel>
 
-        <Panel title="C2 Health">
+        <Panel title="C2 Activity">
           <div className="flex flex-wrap gap-4">
-            <Stat label="Channels" value={status?.c2_channels ?? 0} tone="info" />
+            <Stat label="Total" value={status?.c2_channels ?? 0} tone="info" />
+            <Stat label="Active" value={status?.c2_active_channels ?? 0} tone="success" />
+            <Stat label="Recorded" value={status?.c2_recorded_channels ?? 0} />
             <Stat label="Beacons" value={status?.c2_beacons ?? status?.beacon_count ?? 0} />
-            <Stat label="Tasks" value={status?.c2_tasks ?? 0} />
-            <Stat label="Boneyard" value={status?.boneyard_items ?? 0} tone="success" />
           </div>
         </Panel>
 
@@ -149,11 +193,17 @@ export function DashboardView() {
             <Stat label="Tactics Hit" value={mitre ? heatColumns.length : '—'} />
             <Stat label="Phases Mapped" value={mitre ? phasesHit : '—'} />
           </div>
+          {insightError ? (
+            <p role="alert" className="mt-2 text-[10px] text-void-error">
+              Insight data unavailable: {insightError}
+            </p>
+          ) : null}
         </Panel>
 
         <Panel title="WarLog Summary">
           <div className="flex flex-wrap gap-4">
             <Stat label="Entries" value={status?.warlog_entries ?? 0} />
+            <Stat label="Evidence" value={status?.boneyard_items ?? 0} tone="success" />
             <Stat label="EPM" value={metrics?.events_per_minute ?? 0} tone="info" />
           </div>
           <div className="mt-3 flex flex-wrap gap-1">

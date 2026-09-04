@@ -9,6 +9,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
+from starlette.websockets import WebSocketDisconnect
 
 ROOT = Path(__file__).resolve().parents[3]
 if str(ROOT) not in sys.path:
@@ -32,6 +33,8 @@ def mock_bridge():
         "beacon_count": 0,
         "c2_status": {},
         "c2_channels": 0,
+        "c2_active_channels": 0,
+        "c2_recorded_channels": 0,
         "c2_beacons": 0,
         "c2_tasks": 0,
         "boneyard_items": 5,
@@ -112,7 +115,7 @@ def client(mock_bridge):
         from commandcenter.backend.main import create_app
 
         app = create_app()
-        with TestClient(app) as c:
+        with TestClient(app, base_url="http://127.0.0.1:7070") as c:
             yield c
 
 
@@ -127,6 +130,39 @@ def test_bundled_frontend_index(client):
     assert r.status_code == 200
     assert "text/html" in r.headers["content-type"]
     assert '<div id="root"></div>' in r.text
+    assert r.headers["x-frame-options"] == "DENY"
+    assert "default-src 'self'" in r.headers["content-security-policy"]
+
+
+def test_non_loopback_host_is_rejected(client):
+    r = client.get("/api/health", headers={"host": "example.invalid"})
+    assert r.status_code == 400
+
+
+def test_cross_origin_mutation_is_rejected(client, mock_bridge):
+    r = client.post(
+        "/api/demo/enable",
+        headers={"origin": "https://example.invalid"},
+    )
+    assert r.status_code == 403
+    assert r.json() == {"detail": "Cross-origin mutation rejected"}
+    mock_bridge.enable_demo_mode.assert_not_called()
+
+
+def test_cross_origin_websocket_is_rejected(client):
+    with pytest.raises(WebSocketDisconnect) as caught:
+        with client.websocket_connect(
+            "/ws/live",
+            headers={
+                "host": "127.0.0.1:7070",
+                "origin": "https://example.invalid",
+            },
+        ):
+            pass
+    assert (
+        getattr(caught.value, "code", None) == 1008
+        or getattr(caught.value, "status_code", None) == 403
+    )
 
 
 def test_bundled_frontend_asset(client):
@@ -186,6 +222,19 @@ def test_c2_channels(client):
     r = client.get("/api/c2/channels")
     assert r.status_code == 200
     assert r.json()["count"] == 0
+
+
+def test_spa_deep_link_serves_browser_app(client):
+    r = client.get("/reports")
+    assert r.status_code == 200
+    assert "text/html" in r.headers["content-type"]
+    assert '<div id="root"></div>' in r.text
+
+
+def test_unknown_api_path_stays_json_404(client):
+    r = client.get("/api/not-a-route")
+    assert r.status_code == 404
+    assert r.json() == {"detail": "Not found"}
 
 
 def test_warlog_entries(client):

@@ -1,6 +1,6 @@
 @import "tailwindcss";
 
-/* Palantir-style dark theme tokens for THE VOID Command Center */
+/* Dense dark-theme tokens for THE VOID Command Center */
 @theme {
   --color-void-bg: #14171a;
   --color-void-panel: #1b1f23;
@@ -40,6 +40,70 @@ body {
   line-height: 1.4;
   -webkit-font-smoothing: antialiased;
   overflow: hidden;
+}
+
+button,
+a,
+input,
+select {
+  transition:
+    border-color 0.15s ease,
+    background-color 0.15s ease,
+    color 0.15s ease,
+    opacity 0.15s ease;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--color-void-info);
+  outline-offset: 2px;
+}
+
+.skip-link {
+  position: fixed;
+  top: 8px;
+  left: 8px;
+  z-index: 100;
+  transform: translateY(-160%);
+  border: 1px solid var(--color-void-info);
+  border-radius: 4px;
+  background: var(--color-void-elevated);
+  color: var(--color-void-text);
+  padding: 7px 10px;
+  text-decoration: none;
+}
+
+.skip-link:focus {
+  transform: translateY(0);
+}
+
+.topbar {
+  height: 44px;
+}
+
+.mobile-menu-button,
+.nav-backdrop {
+  display: none;
+}
+
+.nav-rail {
+  width: 232px;
+  transition: transform 0.18s ease;
+}
+
+.inspector-panel {
+  position: absolute;
+  inset: 0 0 0 auto;
+  z-index: 30;
+  width: 320px;
+  box-shadow: -12px 0 30px rgb(0 0 0 / 28%);
+}
+
+.statusbar {
+  height: 28px;
 }
 
 /* Dense data table defaults */
@@ -201,6 +265,13 @@ body {
   font-weight: 600;
   color: var(--color-void-text);
   letter-spacing: 0.02em;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.panel-header h2 {
+  margin: 0;
+  font: inherit;
 }
 
 .panel-body {
@@ -350,6 +421,10 @@ body {
   background: color-mix(in srgb, var(--color-void-success) 65%, var(--color-void-panel));
 }
 
+.timeline-wide {
+  min-width: 1080px;
+}
+
 /* ── Event stream severity accents (W3 stream polish) ─────────────────── */
 .void-table.event-stream tr {
   cursor: pointer;
@@ -412,5 +487,135 @@ body {
   50% {
     opacity: 0.5;
     box-shadow: 0 0 0 5px transparent;
+  }
+}
+
+/* ── Responsive operator shell ─────────────────────────────────────────── */
+@media (max-width: 900px) {
+  .topbar {
+    gap: 8px;
+    padding-inline: 8px;
+  }
+
+  .mobile-menu-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 30px;
+    padding: 0;
+    flex: 0 0 auto;
+  }
+
+  .topbar-brand {
+    min-width: 0;
+    flex: 0 1 auto;
+  }
+
+  .brand-subtitle,
+  .search-copy,
+  .search-shortcut {
+    display: none;
+  }
+
+  .topbar-search {
+    flex: 0 0 32px;
+    width: 32px;
+    padding-inline: 0;
+    justify-content: center;
+  }
+
+  .nav-rail {
+    position: absolute;
+    inset: 0 auto 0 0;
+    z-index: 45;
+    width: min(286px, 84vw);
+    transform: translateX(-105%);
+    box-shadow: 14px 0 35px rgb(0 0 0 / 45%);
+  }
+
+  .nav-rail-open {
+    transform: translateX(0);
+  }
+
+  .nav-backdrop {
+    display: block;
+    position: absolute;
+    inset: 0;
+    z-index: 40;
+    border: 0;
+    background: rgb(0 0 0 / 52%);
+    cursor: default;
+  }
+
+  .shell-main {
+    padding: 10px;
+  }
+
+  .inspector-panel {
+    width: min(360px, calc(100vw - 24px));
+    z-index: 50;
+  }
+
+  .statusbar {
+    overflow-x: auto;
+    white-space: nowrap;
+    gap: 12px;
+  }
+
+  .panel-header {
+    align-items: flex-start;
+  }
+
+  .panel-actions {
+    width: 100%;
+  }
+
+  .panel-actions .void-input {
+    max-width: 100%;
+  }
+}
+
+@media (max-width: 560px) {
+  .topbar-actions {
+    gap: 5px;
+  }
+
+  .engagement-badge,
+  .status-hide-mobile {
+    display: none;
+  }
+
+  .demo-toggle {
+    padding-inline: 6px;
+    font-size: 9px;
+  }
+
+  .badge {
+    padding-inline: 5px;
+  }
+
+  .shell-main {
+    padding: 8px;
+  }
+
+  .panel-header,
+  .panel-body {
+    padding-inline: 10px;
+  }
+
+  .connection-alert .void-btn {
+    margin-left: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }

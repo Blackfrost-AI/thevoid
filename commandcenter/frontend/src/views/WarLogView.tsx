@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { api, type WarLogEntry } from '../api/client'
-import { Panel, EmptyState, LoadingState } from '../components/common/Panel'
+import { Panel, EmptyState, ErrorState, LoadingState } from '../components/common/Panel'
 import { EventStream } from '../components/common/EventStream'
 
 const LEVELS = [
@@ -22,16 +22,21 @@ export function WarLogView() {
   const [level, setLevel] = useState('')
   const [module, setModule] = useState('')
   const [exportMsg, setExportMsg] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
 
   const load = () => {
     setLoading(true)
+    setError(null)
     const params: Record<string, string> = { limit: '500' }
     if (level) params.level = level
     if (module) params.module = module
     api
       .warlogEntries(params)
       .then((r) => setEntries(r.entries))
-      .catch(() => setEntries([]))
+      .catch((reason) => {
+        setEntries([])
+        setError(reason instanceof Error ? reason.message : String(reason))
+      })
       .finally(() => setLoading(false))
   }
 
@@ -39,12 +44,6 @@ export function WarLogView() {
     load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [level])
-
-  useEffect(() => {
-    const onExport = () => doExport()
-    window.addEventListener('void:export-warlog', onExport)
-    return () => window.removeEventListener('void:export-warlog', onExport)
-  })
 
   const modules = useMemo(() => {
     const s = new Set<string>()
@@ -56,14 +55,29 @@ export function WarLogView() {
 
   const filtered = module ? entries.filter((e) => (e.module || '') === module) : entries
 
-  const doExport = async () => {
+  const doExport = useCallback(async () => {
     try {
-      const r = await api.warlogExport()
-      setExportMsg(`Exported ${r.entries} entries → ${r.path}`)
+      setExportMsg('Preparing download…')
+      const blob = await api.warlogDownload()
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = 'warlog_export.json'
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+      setExportMsg(`Downloaded ${entries.length} visible entries (full WarLog export).`)
     } catch (e) {
       setExportMsg(String(e))
     }
-  }
+  }, [entries.length])
+
+  useEffect(() => {
+    const onExport = () => void doExport()
+    window.addEventListener('void:export-warlog', onExport)
+    return () => window.removeEventListener('void:export-warlog', onExport)
+  }, [doExport])
 
   return (
     <Panel
@@ -72,7 +86,7 @@ export function WarLogView() {
       bodyClassName="!p-0 flex flex-col"
       actions={
         <>
-          <select className="void-input" value={level} onChange={(e) => setLevel(e.target.value)}>
+          <select aria-label="Filter WarLog by level" className="void-input" value={level} onChange={(e) => setLevel(e.target.value)}>
             <option value="">All levels</option>
             {LEVELS.map((l) => (
               <option key={l} value={l}>
@@ -82,6 +96,7 @@ export function WarLogView() {
           </select>
           <select
             className="void-input"
+            aria-label="Filter WarLog by module"
             value={module}
             onChange={(e) => setModule(e.target.value)}
           >
@@ -96,7 +111,7 @@ export function WarLogView() {
             Refresh
           </button>
           <button type="button" className="void-btn primary" onClick={doExport}>
-            Export
+            Download JSON
           </button>
         </>
       }
@@ -111,7 +126,9 @@ export function WarLogView() {
           <LoadingState />
         </div>
       ) : null}
-      {!loading && filtered.length === 0 ? (
+      {!loading && error ? (
+        <div className="p-3"><ErrorState message={error} onRetry={load} /></div>
+      ) : !loading && filtered.length === 0 ? (
         <div className="p-3">
           <EmptyState message="No warlog entries." />
         </div>

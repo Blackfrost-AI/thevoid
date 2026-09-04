@@ -22,6 +22,15 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json() as Promise<T>
 }
 
+async function download(path: string): Promise<Blob> {
+  const res = await fetch(`${API_BASE}${path}`, { headers: { Accept: 'application/json' } })
+  if (!res.ok) {
+    const text = await res.text().catch(() => res.statusText)
+    throw new Error(`${res.status} ${path}: ${text}`)
+  }
+  return res.blob()
+}
+
 export type Status = {
   engaged: boolean
   demo_mode: boolean
@@ -36,6 +45,8 @@ export type Status = {
   beacon_count: number
   c2_status: Record<string, unknown>
   c2_channels: number
+  c2_active_channels: number
+  c2_recorded_channels: number
   c2_beacons: number
   c2_tasks: number
   boneyard_items: number
@@ -97,6 +108,9 @@ export interface WarLogEntry {
 export interface Channel {
   channel_id: string
   status: string
+  source?: 'live' | 'evidence'
+  live?: boolean
+  last_known_status?: string
   endpoint?: string
   beacon_count?: number
   task_count?: number
@@ -104,6 +118,16 @@ export interface Channel {
   established_at?: number
   last_beacon?: number
   target?: string
+}
+
+export interface C2Task {
+  task_id: string
+  channel_id: string
+  command?: string
+  params?: Record<string, unknown>
+  status?: string
+  result?: Record<string, unknown> | null
+  received_at?: number
 }
 
 export interface AttackGraph {
@@ -157,7 +181,7 @@ export const api = {
     ),
   tasks: (status?: string) => {
     const q = status ? `?status=${encodeURIComponent(status)}` : ''
-    return request<{ tasks: unknown[]; count: number }>(`/api/c2/tasks${q}`)
+    return request<{ tasks: C2Task[]; count: number }>(`/api/c2/tasks${q}`)
   },
   warlogEntries: (params?: Record<string, string>) => {
     const q = params ? '?' + new URLSearchParams(params).toString() : ''
@@ -172,6 +196,7 @@ export const api = {
     }>('/api/warlog/summary'),
   warlogExport: () =>
     request<{ path: string; entries: number }>('/api/warlog/export', { method: 'POST' }),
+  warlogDownload: () => download('/api/warlog/export/download'),
   reportPreview: (operator = 'THE VOID', name = 'Engagement Report') => {
     const sp = new URLSearchParams({ operator, engagement_name: name })
     return request<Record<string, unknown>>(`/api/report/preview?${sp}`)

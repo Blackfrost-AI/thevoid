@@ -1,32 +1,35 @@
-# React + TypeScript + Vite
+# Command Center frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+React and TypeScript browser client for the localhost Command Center. The
+production bundle is served by FastAPI from `dist/`; Vite is only used during
+development.
 
-Currently, two official plugins are available:
+## Develop
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+From the repository root:
 
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+```bash
+./commandcenter/scripts/dev.sh
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+Open `http://127.0.0.1:5173`. Vite proxies REST and WebSocket traffic to the
+backend on `127.0.0.1:7070`.
+
+## Verify and build
+
+```bash
+npm ci
+npm run lint
+npm run build
+```
+
+The committed `dist/` bundle is the client-testing artifact. Rebuild it after
+every frontend change and test the production URL at `http://127.0.0.1:7070`.
+
+## Interaction model
+
+- Primary navigation has stable URLs and supports browser Back/Forward.
+- `Ctrl+K` opens navigation and common actions.
+- Demo Mode uses isolated synthetic data and is clearly badged.
+- Tables, graphs, timeline evidence, reports, and downloads are browser-first.
+- The layout supports desktop and narrow operator windows.

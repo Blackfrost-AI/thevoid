@@ -7,6 +7,7 @@ existing module APIs without bypassing safety controls.
 
 from __future__ import annotations
 
+import json
 import logging
 import shutil
 import sys
@@ -23,7 +24,7 @@ if str(_PROJECT_ROOT) not in sys.path:
 
 
 class ServiceBridge:
-    """Singleton-style bridge to ChaosEngine / Boneyard / WarLog / MCPC2 / Reporter.
+    """Singleton-style bridge to persistent stores and reporting services.
 
     Modules are initialized lazily and failures are captured as degraded
     services rather than crashing the API process.
@@ -64,42 +65,26 @@ class ServiceBridge:
             logger.exception("WarLog unavailable: %s", exc)
             self.degraded.append("warlog")
 
-        try:
-            from orchestrator.chaos import ChaosEngine
+        # Do not construct ChaosEngine here. The Command Center is a
+        # read-mostly observer, and instantiating the active engine loads an
+        # ungated agent runtime that neither represents nor shares ephemeral
+        # state with a separate operator process. Persistent stores below are
+        # the cross-process source of truth. A future visual runner should be
+        # explicit and scope-gated rather than appearing as a startup side effect.
 
-            self._chaos = ChaosEngine()
-            # Prefer shared store instances when ChaosEngine created its own
-            if self._warlog is None and getattr(self._chaos, "warlog", None):
-                self._warlog = self._chaos.warlog
-            if self._boneyard is None and getattr(self._chaos, "boneyard", None):
-                self._boneyard = self._chaos.boneyard
-        except Exception as exc:  # pragma: no cover
-            logger.exception("ChaosEngine unavailable: %s", exc)
-            self.degraded.append("chaos")
-
-        try:
-            from c2.mcp_c2 import MCPC2
-
-            self._mcp_c2 = MCPC2(
-                boneyard=self._boneyard,
-                warlog=self._warlog,
-            )
-        except Exception as exc:  # pragma: no cover
-            logger.exception("MCPC2 unavailable: %s", exc)
-            self.degraded.append("c2")
+        # Do not create a second, empty MCPC2 runtime. Channels owned by an
+        # operator process are ephemeral and cannot be observed by instantiating
+        # another object here. The bridge projects their persisted evidence;
+        # deployments that embed both runtimes may explicitly inject the live
+        # adapter into ``_mcp_c2``.
 
         try:
             from modules.reporter import Reporter
 
-            attack_log: List[Dict[str, Any]] = []
-            if self._chaos is not None:
-                agent = getattr(self._chaos, "agent", None)
-                if agent is not None:
-                    attack_log = list(getattr(agent, "attack_log", []) or [])
             self._reporter = Reporter(
                 warlog=self._warlog,
                 boneyard=self._boneyard,
-                attack_log=attack_log,
+                attack_log=self.get_attack_log(),
             )
         except Exception as exc:  # pragma: no cover
             logger.exception("Reporter unavailable: %s", exc)
@@ -224,15 +209,10 @@ class ServiceBridge:
             self._demo_summary = {}
 
             try:
-                attack_log: List[Dict[str, Any]] = []
-                if self._chaos is not None:
-                    agent = getattr(self._chaos, "agent", None)
-                    if agent is not None:
-                        attack_log = list(getattr(agent, "attack_log", []) or [])
                 self._reporter = Reporter(
                     warlog=self._warlog,
                     boneyard=self._boneyard,
-                    attack_log=attack_log,
+                    attack_log=self.get_attack_log(),
                 )
             except Exception as exc:  # pragma: no cover — defensive
                 logger.warning("live reporter rebuild failed: %s", exc)
@@ -246,7 +226,7 @@ class ServiceBridge:
     # ─── Status ────────────────────────────────────────────────────────────
 
     def get_status(self) -> Dict[str, Any]:
-        """Aggregate engagement status from ChaosEngine + C2 + stores."""
+        """Aggregate current runtime state with persisted engagement evidence."""
         status: Dict[str, Any] = {
             "engaged": False,
             "demo_mode": self._demo_active,
@@ -261,6 +241,8 @@ class ServiceBridge:
             "beacon_count": 0,
             "c2_status": {},
             "c2_channels": 0,
+            "c2_active_channels": 0,
+            "c2_recorded_channels": 0,
             "c2_beacons": 0,
             "c2_tasks": 0,
             "boneyard_items": 0,
@@ -291,6 +273,7 @@ class ServiceBridge:
         if self._mcp_c2 is not None:
             try:
                 status["c2_channels"] = int(self._mcp_c2.get_active_channel_count())
+                status["c2_active_channels"] = status["c2_channels"]
                 status["c2_beacons"] = int(self._mcp_c2.get_total_beacons())
                 status["c2_tasks"] = int(self._mcp_c2.get_total_tasks())
             except Exception as exc:
@@ -310,6 +293,62 @@ class ServiceBridge:
             except Exception:
                 pass
 
+        # The browser often starts after a CLI run has finished, so the
+        # command-center process has no in-memory target/attack list. Fall
+        # back to the shared persistent store to keep dashboard totals aligned
+        # with the Targets and insight views across process restarts.
+        if not status["targets"] and self._boneyard is not None:
+            try:
+                seen: set[str] = set()
+                recorded_targets: List[str] = []
+                for host in self.query_hosts({}):
+                    name = host.get("hostname") or host.get("ip_address")
+                    normalized = str(name or '').strip()
+                    if normalized and normalized not in seen:
+                        seen.add(normalized)
+                        recorded_targets.append(normalized)
+                status["targets"] = recorded_targets
+                status["target_count"] = len(recorded_targets)
+            except Exception:
+                pass
+
+        if not status["attack_log"] and self._boneyard is not None:
+            try:
+                status["attack_log"] = len(self.get_attack_log())
+            except Exception:
+                pass
+
+        # Live MCPC2 state disappears with its process. Merge restart-safe
+        # evidence into the total while preserving an explicit active count.
+        try:
+            channels = self.list_channels()
+            if channels:
+                status["c2_channels"] = len(channels)
+                status["c2_active_channels"] = sum(
+                    bool(channel.get("live")) and channel.get("status") == "active"
+                    for channel in channels
+                )
+                status["c2_recorded_channels"] = sum(
+                    not bool(channel.get("live")) for channel in channels
+                )
+                status["c2_beacons"] = sum(
+                    int(channel.get("beacon_count") or 0) for channel in channels
+                )
+                status["c2_tasks"] = sum(
+                    int(channel.get("task_count") or 0) for channel in channels
+                )
+                status["c2_status"] = {
+                    "active": status["c2_active_channels"],
+                    "recorded": status["c2_recorded_channels"],
+                }
+            elif not status["c2_status"]:
+                status["c2_status"] = {
+                    "active": status["c2_active_channels"],
+                    "recorded": 0,
+                }
+        except Exception:
+            pass
+
         # DEMO MODE targets override: while active, report the seeded demo
         # hosts (fictional *.demo.void) so the UI shows the stage scenario.
         if self._demo_active:
@@ -324,6 +363,7 @@ class ServiceBridge:
                         targets.append(name)
                 status["targets"] = targets
                 status["target_count"] = len(targets)
+                status["attack_log"] = int(self._demo_summary.get("engagements") or 0)
             except Exception:
                 pass
 
@@ -448,8 +488,19 @@ class ServiceBridge:
             return {"nodes": [], "edges": [], "outcomes": [], "error": "boneyard unavailable"}
         try:
             graph = self._boneyard.graph_attack_paths(host_id)
+            nodes = [dict(node) for node in (graph.get("nodes") or [])]
+            host_names: Dict[str, str] = {}
+            for host in self.query_hosts({}):
+                hid = str(host.get("id") or "")
+                name = host.get("hostname") or host.get("ip_address")
+                if hid and name:
+                    host_names[hid] = str(name)
+            for node in nodes:
+                node_host_id = str(node.get("host_id") or "")
+                if node_host_id in host_names:
+                    node["host_name"] = host_names[node_host_id]
             return {
-                "nodes": list(graph.get("nodes") or []),
+                "nodes": self._sanitize(nodes),
                 "edges": list(graph.get("edges") or []),
                 "outcomes": list(graph.get("outcomes") or []),
                 "error": graph.get("error"),
@@ -460,9 +511,64 @@ class ServiceBridge:
 
     # ─── C2 ────────────────────────────────────────────────────────────────
 
-    def list_channels(self) -> List[Dict[str, Any]]:
-        if self._mcp_c2 is None:
+    @staticmethod
+    def _counter(value: Any) -> int:
+        """Normalize persisted counters without dropping an entire result set."""
+        try:
+            return max(0, int(value or 0))
+        except (TypeError, ValueError):
+            return 0
+
+    def _persisted_channels(self) -> List[Dict[str, Any]]:
+        """Return restart-safe channel evidence from the Boneyard.
+
+        MCPC2's live channel objects are process-local. A Command Center
+        launched after an operator run must therefore treat the shared store
+        as historical evidence, not proof that a channel is still reachable.
+        """
+        if self._boneyard is None:
             return []
+        try:
+            rows = self._boneyard.search(category="mcp_c2_channel", limit=500) or []
+            recorded: List[Dict[str, Any]] = []
+            seen: set[str] = set()
+            for row in rows:
+                data = row.get("data") if isinstance(row, dict) else None
+                if not isinstance(data, dict):
+                    continue
+                channel_id = str(data.get("channel_id") or "").strip()
+                if not channel_id or channel_id in seen:
+                    continue
+                seen.add(channel_id)
+                recorded.append(
+                    self._sanitize(
+                        {
+                            "channel_id": channel_id,
+                            "status": "recorded",
+                            "last_known_status": data.get("status") or "active",
+                            "source": "evidence",
+                            "live": False,
+                            "target": data.get("target"),
+                            "endpoint": data.get("endpoint"),
+                            "tool_name": data.get("tool_name"),
+                            "encoding": data.get("encoding"),
+                            "beacon_count": self._counter(data.get("beacon_count")),
+                            "task_count": self._counter(data.get("task_count")),
+                            "fail_count": self._counter(data.get("fail_count")),
+                            "established_at": data.get("established_at") or row.get("epoch"),
+                            "last_beacon": data.get("last_beacon"),
+                        }
+                    )
+                )
+            return recorded
+        except Exception as exc:
+            logger.warning("persisted C2 channel query failed: %s", exc)
+            return []
+
+    def list_channels(self) -> List[Dict[str, Any]]:
+        persisted = {c["channel_id"]: c for c in self._persisted_channels()}
+        if self._mcp_c2 is None:
+            return list(persisted.values())
         try:
             channels = self._mcp_c2.list_channels() or []
             # Enrich with target names when available
@@ -476,33 +582,62 @@ class ServiceBridge:
                     if target is not None:
                         item["target"] = getattr(target, "name", str(target))
                     item["endpoint"] = item.get("endpoint") or getattr(state, "endpoint", None)
+                item["source"] = "live"
+                item["live"] = True
                 # Never leak auth credentials
                 item.pop("auth", None)
                 enriched.append(self._sanitize(item))
-            return enriched
+                persisted.pop(str(cid or ""), None)
+            return enriched + list(persisted.values())
         except Exception as exc:
             logger.warning("list_channels failed: %s", exc)
-            return []
+            return list(persisted.values())
 
     def get_channel_status(self, channel_id: str) -> Dict[str, Any]:
-        if self._mcp_c2 is None:
-            return {"status": "error", "reason": "c2 unavailable", "channel_id": channel_id}
+        live_channels = getattr(self._mcp_c2, "channels", {}) if self._mcp_c2 is not None else {}
+        if channel_id not in live_channels:
+            recorded = next(
+                (item for item in self._persisted_channels() if item["channel_id"] == channel_id),
+                None,
+            )
+            if recorded is not None:
+                return recorded
+            return {
+                "status": "error",
+                "reason": f"Unknown channel: {channel_id}",
+                "channel_id": channel_id,
+            }
         try:
             raw = self._mcp_c2.get_channel_status(channel_id) or {}
             raw.pop("auth", None)
-            if channel_id in getattr(self._mcp_c2, "channels", {}):
-                state = self._mcp_c2.channels[channel_id]
-                target = getattr(state, "target", None)
-                if target is not None:
-                    raw["target"] = getattr(target, "name", str(target))
+            state = live_channels[channel_id]
+            target = getattr(state, "target", None)
+            if target is not None:
+                raw["target"] = getattr(target, "name", str(target))
+            raw["source"] = "live"
+            raw["live"] = True
             return self._sanitize(raw)
         except Exception as exc:
             logger.warning("get_channel_status failed: %s", exc)
             return {"status": "error", "reason": str(exc), "channel_id": channel_id}
 
     def check_channel_health(self, channel_id: str) -> Dict[str, Any]:
-        if self._mcp_c2 is None:
-            return {"healthy": False, "reason": "c2 unavailable", "channel_id": channel_id}
+        live_channels = getattr(self._mcp_c2, "channels", {}) if self._mcp_c2 is not None else {}
+        if channel_id not in live_channels:
+            recorded = any(
+                item["channel_id"] == channel_id for item in self._persisted_channels()
+            )
+            return {
+                "healthy": False,
+                "status": "recorded" if recorded else "unknown",
+                "live": False,
+                "reason": (
+                    "Historical evidence only; live health is unavailable"
+                    if recorded
+                    else "Unknown channel"
+                ),
+                "channel_id": channel_id,
+            }
         try:
             # Health check may probe the network — wrap carefully
             return self._sanitize(self._mcp_c2.check_channel_health(channel_id) or {})
@@ -596,6 +731,40 @@ class ServiceBridge:
 
     # ─── Reports ───────────────────────────────────────────────────────────
 
+    def get_attack_log(self) -> List[Dict[str, Any]]:
+        """Reconstruct completed engagement payloads across process restarts."""
+        payloads: List[Dict[str, Any]] = []
+        seen: set[str] = set()
+        if self._boneyard is not None:
+            try:
+                categories = list(self._boneyard.categories() or [])
+                for category in sorted(c for c in categories if c.startswith("attack_")):
+                    for row in self._boneyard.search(category=category, limit=500) or []:
+                        payload = row.get("data")
+                        if not isinstance(payload, dict):
+                            continue
+                        key = json.dumps(payload, sort_keys=True, default=str)
+                        if key not in seen:
+                            seen.add(key)
+                            payloads.append(payload)
+            except Exception as exc:
+                logger.warning("attack log reconstruction failed: %s", exc)
+
+        if self._chaos is not None and not self._demo_active:
+            agent = getattr(self._chaos, "agent", None)
+            for payload in list(getattr(agent, "attack_log", []) or []):
+                if not isinstance(payload, dict):
+                    continue
+                key = json.dumps(payload, sort_keys=True, default=str)
+                if key not in seen:
+                    seen.add(key)
+                    payloads.append(payload)
+        return payloads
+
+    def _refresh_reporter_attack_log(self) -> None:
+        if self._reporter is not None:
+            self._reporter.attack_log = self.get_attack_log()
+
     def gather_report_data(
         self,
         operator: str = "THE VOID",
@@ -604,6 +773,7 @@ class ServiceBridge:
         if self._reporter is None:
             return {"error": "reporter unavailable"}
         try:
+            self._refresh_reporter_attack_log()
             self._reporter.operator = operator
             self._reporter.engagement_name = engagement_name
             return self._sanitize(self._reporter.gather_data())
@@ -620,6 +790,7 @@ class ServiceBridge:
     ) -> Dict[str, Any]:
         if self._reporter is None:
             raise RuntimeError("reporter unavailable")
+        self._refresh_reporter_attack_log()
         self._reporter.operator = operator
         self._reporter.engagement_name = engagement_name
         content = self._reporter.generate(format=fmt, output_path=output_path)

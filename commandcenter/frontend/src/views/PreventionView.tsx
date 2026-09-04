@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Panel, Stat, EmptyState } from '../components/common/Panel'
+import { Panel, Stat, EmptyState, ErrorState, LoadingState } from '../components/common/Panel'
 import { useUiStore } from '../store/ui'
 import { api } from '../api/client'
 import type { CoverageResponse, EngagementScore } from '../types/insights'
@@ -102,12 +102,20 @@ export function PreventionView() {
     <div className="h-full flex flex-col gap-3">
       <div className="grid grid-cols-1 xl:grid-cols-4 gap-3">
         <Panel title="Aggregate Prevention Strength" className="xl:col-span-1">
-          <div className="flex items-center justify-center py-2">
-            <Gauge value={data?.aggregated ?? 0} />
-          </div>
-          <div className="text-center text-[11px] text-void-text-mute">
-            Mean R-2 score across {data?.count ?? 0} engagement{data?.count === 1 ? '' : 's'}
-          </div>
+          {data ? (
+            <>
+              <div className="flex items-center justify-center py-2">
+                <Gauge value={data.aggregated} />
+              </div>
+              <div className="text-center text-[11px] text-void-text-mute">
+                Mean R-2 score across {data.count} engagement{data.count === 1 ? '' : 's'}
+              </div>
+            </>
+          ) : error ? (
+            <ErrorState message={error} onRetry={load} />
+          ) : (
+            <LoadingState label="Calculating prevention strength…" />
+          )}
         </Panel>
 
         <Panel title="Scoring Inputs" className="xl:col-span-3">
@@ -121,7 +129,6 @@ export function PreventionView() {
           <div className="mt-4 flex flex-wrap gap-3 text-[10px] text-void-text-mute">
             <span>rubric: verified=1.0 · exploited=0.7 · reachability=0.3 · unknown=0.0</span>
           </div>
-          {error ? <div className="mt-3 text-[11px] text-void-error">{error}</div> : null}
           <button type="button" className="void-btn mt-3" onClick={load} disabled={busy}>
             {busy ? 'Scoring…' : 'Rescore now'}
           </button>
@@ -138,7 +145,9 @@ export function PreventionView() {
           </button>
         }
       >
-        {!data ? (
+        {error ? (
+          <div className="p-3"><ErrorState message={error} onRetry={load} /></div>
+        ) : !data ? (
           <div className="p-3">{busy ? <EmptyState message="Scoring…" /> : <EmptyState message="Loading…" />}</div>
         ) : data.engagement_scores.length === 0 ? (
           <div className="p-3">
@@ -162,6 +171,13 @@ export function PreventionView() {
                   key={eng.engagement_index}
                   className="cursor-pointer"
                   onClick={() => inspectEngagement(eng)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault()
+                      inspectEngagement(eng)
+                    }
+                  }}
+                  tabIndex={0}
                 >
                   <td className="mono text-void-text-mute">{eng.engagement_index}</td>
                   <td>{eng.target}</td>

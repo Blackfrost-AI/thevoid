@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api, type TargetHost } from '../api/client'
-import { Panel, EmptyState, LoadingState } from '../components/common/Panel'
+import { Panel, EmptyState, ErrorState, LoadingState } from '../components/common/Panel'
 import { useUiStore } from '../store/ui'
 import { statusClass, trunc } from '../utils/format'
 
@@ -21,7 +21,10 @@ export function TargetsView() {
         setTargets(r.targets)
         setError(null)
       })
-      .catch((e) => setError(String(e)))
+      .catch((e) => {
+        setTargets([])
+        setError(String(e))
+      })
       .finally(() => setLoading(false))
   }
 
@@ -88,6 +91,7 @@ export function TargetsView() {
         <>
           <input
             className="void-input w-48"
+            aria-label="Filter targets"
             placeholder="Filter hosts…"
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
@@ -99,10 +103,10 @@ export function TargetsView() {
       }
     >
       {loading ? <div className="p-3"><LoadingState /></div> : null}
-      {error ? <div className="p-3 text-void-error text-[12px]">{error}</div> : null}
+      {!loading && error ? <div className="p-3"><ErrorState message={error} onRetry={load} /></div> : null}
       {!loading && !error && filtered.length === 0 ? (
         <div className="p-3">
-          <EmptyState message="No hosts in Boneyard. Hosts appear after recon/engagement writes relational host records." />
+          <EmptyState message="No targets recorded yet. Targets appear after authorized discovery or validation writes host records." />
         </div>
       ) : null}
       {filtered.length > 0 ? (
@@ -126,6 +130,13 @@ export function TargetsView() {
                     key={id}
                     className={selectedId === id ? 'selected' : ''}
                     onClick={() => onSelect(t)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault()
+                        void onSelect(t)
+                      }
+                    }}
+                    tabIndex={0}
                     style={{ cursor: 'pointer' }}
                   >
                     <td className="mono">{t.ip_address || '—'}</td>

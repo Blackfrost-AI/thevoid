@@ -5,28 +5,26 @@ export function Inspector() {
   const inspector = useUiStore((s) => s.inspector)
   const closeInspector = useUiStore((s) => s.closeInspector)
 
-  if (!open) return null
+  if (!open || !inspector) return null
 
   return (
     <aside
-      className="shrink-0 border-l border-void-line bg-void-panel flex flex-col"
-      style={{ width: 320 }}
+      aria-label="Selection inspector"
+      className="inspector-panel border-l border-void-line bg-void-panel flex flex-col"
     >
       <div className="flex items-center justify-between px-3 py-2 border-b border-void-line">
         <span className="text-[11px] uppercase tracking-wider text-void-text-dim">Inspector</span>
-        {inspector ? (
-          <button type="button" className="void-btn text-[11px] py-0.5" onClick={closeInspector}>
-            Clear
-          </button>
-        ) : null}
+        <button
+          type="button"
+          aria-label="Close inspector"
+          className="void-btn text-[11px] py-0.5"
+          onClick={closeInspector}
+        >
+          Close
+        </button>
       </div>
       <div className="flex-1 overflow-auto p-3">
-        {!inspector ? (
-          <p className="text-void-text-mute text-[12px]">
-            Select a row or graph node to inspect details.
-          </p>
-        ) : (
-          <div className="space-y-3">
+        <div className="space-y-3">
             <div>
               <div className="text-[14px] font-semibold text-void-text">{inspector.title}</div>
               {inspector.subtitle ? (
@@ -59,8 +57,7 @@ export function Inspector() {
                 ))}
               </div>
             ) : null}
-          </div>
-        )}
+        </div>
       </div>
     </aside>
   )
