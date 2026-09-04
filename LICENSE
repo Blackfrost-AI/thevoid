@@ -1,0 +1,73 @@
+THE VOID — COMMERCIAL PROPRIETARY LICENSE
+Copyright (c) 2026 Blackfrost AI. All rights reserved.
+
+================================================================================
+PRIVATE / COMMERCIAL SOFTWARE — NOT AN OPEN SOURCE LICENSE
+================================================================================
+
+This software and all associated documentation, designs, marketing assets,
+operator handbooks, and related materials (collectively, the "Software") are
+the confidential and proprietary property of Blackfrost AI ("Licensor").
+
+1. GRANT OF LICENSE
+   Subject to a separate written commercial agreement with Licensor, authorized
+   licensees are granted a limited, non-exclusive, non-transferable,
+   non-sublicensable right to use the Software solely for:
+     (a) internal authorized security testing and red team operations;
+     (b) private demonstrations to agreed recipients under NDA;
+     (c) evaluation as expressly permitted in writing by Licensor.
+
+2. RESTRICTIONS
+   Except as expressly permitted in a signed commercial agreement, you may NOT:
+     (a) publish, redistribute, sublicense, sell, lease, or otherwise make the
+         Software available to the public or any third party;
+     (b) upload the Software to a public repository, package index, or mirror;
+     (c) remove or alter proprietary notices, trademarks, or this license;
+     (d) reverse engineer, decompile, or disassemble the Software except to the
+         extent such restriction is prohibited by applicable law;
+     (e) use the Software against systems without documented authorization (ROE);
+     (f) use the Software for any unlawful purpose.
+
+3. CONFIDENTIALITY
+   The Software is confidential. Recipients of private repository access must
+   protect it with at least the same degree of care used for their own
+   confidential information, and no less than reasonable care. Access credentials
+   and clone URLs must not be shared outside authorized personnel.
+
+4. NO PUBLIC RELEASE
+   This repository is intended for PRIVATE use only. Absence of a public GitHub
+   setting, open-source SPDX identifier, or OSI-approved license text is
+   intentional. Do not relicense as MIT, Apache-2.0, GPL, or any open-source
+   terms without written approval from Blackfrost AI.
+
+5. INTELLECTUAL PROPERTY
+   All right, title, and interest in the Software remain with Licensor.
+   No ownership is transferred by access to a private repository.
+
+6. AUTHORIZED USE ONLY
+   The Software is a dual-use security platform. Licensees are solely responsible
+   for compliance with all applicable laws, rules of engagement, and client
+   authorization requirements. Licensor disclaims liability for unauthorized use.
+
+7. WARRANTY DISCLAIMER
+   THE SOFTWARE IS PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+   IMPLIED, INCLUDING BUT NOT LIMITED TO WARRANTIES OF MERCHANTABILITY, FITNESS
+   FOR A PARTICULAR PURPOSE, AND NON-INFRINGEMENT.
+
+8. LIMITATION OF LIABILITY
+   TO THE MAXIMUM EXTENT PERMITTED BY LAW, LICENSOR SHALL NOT BE LIABLE FOR ANY
+   INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, OR PUNITIVE DAMAGES, OR ANY
+   LOSS OF PROFITS OR DATA, ARISING FROM USE OF THE SOFTWARE.
+
+9. TERMINATION
+   Access and license rights terminate automatically upon breach of this license
+   or of any commercial agreement with Licensor. Upon termination, cease use and
+   destroy all copies in your possession unless required by law to retain them.
+
+10. CONTACT
+    Commercial licensing and private repository access: Blackfrost AI
+    Steward / platform agent: Frosty (VOID platform operations)
+
+================================================================================
+END OF LICENSE
+================================================================================

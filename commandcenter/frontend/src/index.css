@@ -1,0 +1,416 @@
+@import "tailwindcss";
+
+/* Palantir-style dark theme tokens for THE VOID Command Center */
+@theme {
+  --color-void-bg: #14171a;
+  --color-void-panel: #1b1f23;
+  --color-void-elevated: #23282e;
+  --color-void-line: #2b3137;
+  --color-void-line-soft: #21262b;
+  --color-void-text: #d6dadf;
+  --color-void-text-dim: #8a929b;
+  --color-void-text-mute: #5f6770;
+  --color-void-success: #6e8e6a;
+  --color-void-warning: #b79155;
+  --color-void-error: #b0606a;
+  --color-void-info: #6f89a3;
+  --color-void-neutral: #6b747d;
+
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "Cascadia Code", "Consolas", monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--color-void-bg);
+  color: var(--color-void-text);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 1.4;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+/* Dense data table defaults */
+.void-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.void-table th {
+  text-align: left;
+  color: var(--color-void-text-dim);
+  font-weight: 500;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-bottom: 1px solid var(--color-void-line);
+  padding: 6px 8px;
+  height: 28px;
+  position: sticky;
+  top: 0;
+  background: var(--color-void-panel);
+  z-index: 1;
+}
+
+.void-table td {
+  padding: 4px 8px;
+  height: 28px;
+  border-bottom: 1px solid var(--color-void-line-soft);
+  color: var(--color-void-text);
+  vertical-align: middle;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 280px;
+}
+
+.void-table tr:hover td {
+  background: var(--color-void-elevated);
+}
+
+.void-table tr.selected td {
+  background: color-mix(in srgb, var(--color-void-info) 18%, var(--color-void-panel));
+}
+
+/* Scrollbars */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-void-line);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-void-text-mute);
+}
+
+/* Status badges */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  border: 1px solid var(--color-void-line);
+  background: var(--color-void-elevated);
+  color: var(--color-void-text-dim);
+}
+.badge.success {
+  color: var(--color-void-success);
+  border-color: color-mix(in srgb, var(--color-void-success) 40%, transparent);
+}
+.badge.warning {
+  color: var(--color-void-warning);
+  border-color: color-mix(in srgb, var(--color-void-warning) 40%, transparent);
+}
+.badge.error {
+  color: var(--color-void-error);
+  border-color: color-mix(in srgb, var(--color-void-error) 40%, transparent);
+}
+.badge.info {
+  color: var(--color-void-info);
+  border-color: color-mix(in srgb, var(--color-void-info) 40%, transparent);
+}
+
+/* DEMO MODE badge + toggle */
+.badge.demo-mode {
+  color: var(--color-void-warning);
+  border-color: color-mix(in srgb, var(--color-void-warning) 60%, transparent);
+  background: color-mix(in srgb, var(--color-void-warning) 14%, transparent);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  animation: demo-pulse 1.6s ease-in-out infinite;
+}
+@keyframes demo-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+
+.demo-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  border: 1px solid var(--color-void-line);
+  background: var(--color-void-elevated);
+  color: var(--color-void-text-dim);
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+.demo-toggle:hover {
+  border-color: var(--color-void-warning);
+  color: var(--color-void-warning);
+}
+.demo-toggle:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+.demo-toggle-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-void-text-dim);
+}
+.demo-toggle-on {
+  border-color: var(--color-void-warning);
+  background: color-mix(in srgb, var(--color-void-warning) 16%, transparent);
+  color: var(--color-void-warning);
+}
+.demo-toggle-on .demo-toggle-dot {
+  background: var(--color-void-warning);
+  animation: demo-pulse 1.2s ease-in-out infinite;
+}
+
+/* Panel */
+.panel {
+  background: var(--color-void-panel);
+  border: 1px solid var(--color-void-line);
+  border-radius: 6px;
+}
+
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--color-void-line);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-void-text);
+  letter-spacing: 0.02em;
+}
+
+.panel-body {
+  padding: 8px 12px;
+}
+
+/* Input */
+.void-input {
+  background: var(--color-void-bg);
+  border: 1px solid var(--color-void-line);
+  border-radius: 4px;
+  color: var(--color-void-text);
+  font-size: 12px;
+  padding: 5px 8px;
+  outline: none;
+}
+.void-input:focus {
+  border-color: var(--color-void-info);
+}
+.void-input::placeholder {
+  color: var(--color-void-text-mute);
+}
+
+.void-btn {
+  background: var(--color-void-elevated);
+  border: 1px solid var(--color-void-line);
+  border-radius: 4px;
+  color: var(--color-void-text);
+  font-size: 12px;
+  padding: 5px 10px;
+  cursor: pointer;
+}
+.void-btn:hover {
+  background: color-mix(in srgb, var(--color-void-info) 15%, var(--color-void-elevated));
+  border-color: var(--color-void-info);
+}
+.void-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.void-btn.primary {
+  background: color-mix(in srgb, var(--color-void-info) 25%, var(--color-void-elevated));
+  border-color: var(--color-void-info);
+  color: var(--color-void-text);
+}
+
+/* Mono data */
+.mono {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+/* ── MITRE tactic-column heatmap (real R-1 annotation) ─────────────────── */
+.mitre-heatmap {
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+  padding: 2px;
+}
+
+.mitre-tactic-col {
+  flex: 1 1 0;
+  min-width: 108px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.mitre-tactic-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  padding: 3px 6px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-void-text-dim);
+  border-bottom: 1px solid var(--color-void-line);
+}
+
+.mitre-tactic-count {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--color-void-text-mute);
+}
+
+.mitre-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  width: 100%;
+  padding: 4px 6px;
+  border: 1px solid var(--color-void-line);
+  border-radius: 4px;
+  text-align: left;
+  cursor: pointer;
+  line-height: 1.2;
+}
+
+.mitre-cell:hover {
+  border-color: var(--color-void-info);
+}
+
+.mitre-cell-id {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.mitre-cell-name {
+  font-size: 10px;
+  color: inherit;
+  opacity: 0.85;
+}
+
+/* ── Prevention-strength gauge (R-2) ────────────────────────────────────── */
+.gauge-ring {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: 3px solid var(--color-void-line);
+  background: var(--color-void-bg);
+}
+
+/* ── Drift timeline (R-3) ───────────────────────────────────────────────── */
+.drift-row td:first-child {
+  border-left: 2px solid var(--color-void-warning);
+}
+
+/* ── Horizontal score bar ───────────────────────────────────────────────── */
+.score-bar {
+  position: relative;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--color-void-bg);
+  border: 1px solid var(--color-void-line-soft);
+  overflow: hidden;
+}
+
+.score-bar-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: color-mix(in srgb, var(--color-void-success) 65%, var(--color-void-panel));
+}
+
+/* ── Event stream severity accents (W3 stream polish) ─────────────────── */
+.void-table.event-stream tr {
+  cursor: pointer;
+}
+/* Left accent rail by severity. */
+.void-table.event-stream td:first-child {
+  border-left: 3px solid transparent;
+}
+.void-table.event-stream tr.sev-error td:first-child,
+.void-table.event-stream tr.sev-critical td:first-child {
+  border-left-color: var(--color-void-error);
+}
+.void-table.event-stream tr.sev-warning td:first-child {
+  border-left-color: var(--color-void-warning);
+}
+.void-table.event-stream tr.sev-info td:first-child {
+  border-left-color: var(--color-void-info);
+}
+.void-table.event-stream tr.sev-success td:first-child {
+  border-left-color: var(--color-void-success);
+}
+.void-table.event-stream tr.sev-neutral td:first-child {
+  border-left-color: var(--color-void-line);
+}
+/* Subtle row tint for hot severities. */
+.void-table.event-stream tr.sev-error td,
+.void-table.event-stream tr.sev-critical td {
+  background: color-mix(in srgb, var(--color-void-error) 8%, var(--color-void-panel));
+}
+.void-table.event-stream tr.sev-warning td {
+  background: color-mix(in srgb, var(--color-void-warning) 5%, var(--color-void-panel));
+}
+/* Fresh-arrival flash on the newest live row. */
+.void-table.event-stream tr.fresh td {
+  animation: stream-fresh 1.4s ease-out 1;
+}
+@keyframes stream-fresh {
+  0% {
+    background: color-mix(in srgb, var(--color-void-info) 30%, var(--color-void-panel));
+  }
+  100% {
+    background: transparent;
+  }
+}
+/* Pulsing LIVE dot. */
+.live-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--color-void-success);
+  animation: live-pulse 1.6s ease-in-out infinite;
+}
+@keyframes live-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-void-success) 60%, transparent);
+  }
+  50% {
+    opacity: 0.5;
+    box-shadow: 0 0 0 5px transparent;
+  }
+}

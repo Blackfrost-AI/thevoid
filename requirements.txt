@@ -1,0 +1,51 @@
+# THE VOID — runtime and client-testing requirements
+
+# Core
+python-dotenv>=1.0.0
+
+# Networking
+requests>=2.31.0
+urllib3>=2.1.0
+
+# Cryptography
+cryptography>=41.0.0
+
+# Database
+sqlalchemy>=2.0.0
+
+# Data
+pyyaml>=6.0.0
+toml>=0.10.0
+
+# Testing (also available through `pip install -e '.[dev]'`)
+pytest>=7.4.0
+pytest-cov>=4.1.0
+pytest-asyncio>=0.21.0
+pytest-timeout>=2.3.0
+
+# Logging
+loguru>=0.7.0
+
+# CLI
+click>=8.1.0
+rich>=13.5.0
+
+# HTTP
+httpx>=0.25.0
+
+# DNS
+dnspython>=2.4.0
+
+# Scheduling
+schedule>=1.2.0
+
+# Progress
+tqdm>=4.66.0
+
+# Colors
+colorama>=0.4.6
+
+# Command Center
+fastapi>=0.110.0
+uvicorn[standard]>=0.27.0
+pydantic>=2.0.0

@@ -1,0 +1,563 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="THE VOID — Operator-authorized AI red team. Local, auditable, MCP-aware. Built for red team operators who need real execution, scope gates, and evidence that holds up." />
+  <meta name="theme-color" content="#050608" />
+  <title>THE VOID — AI Red Team Platform</title>
+  <link rel="icon" href="assets/favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <canvas id="voidfield" aria-hidden="true"></canvas>
+  <div class="wrap">
+
+    <!-- NAV -->
+    <header class="nav">
+      <a class="nav-brand" href="#top">
+        <span class="nav-mark">V</span>
+        THE VOID
+      </a>
+      <button class="nav-toggle" type="button" aria-label="Menu">///</button>
+      <ul class="nav-links">
+        <li><a href="#signal">Signal</a></li>
+        <li><a href="#stack">Stack</a></li>
+        <li><a href="#pipeline">Pipeline</a></li>
+        <li><a href="#mcp">MCP</a></li>
+        <li><a href="#surfaces">Surfaces</a></li>
+        <li><a href="#demo">Demo</a></li>
+        <li><a href="#ops" class="nav-cta">Run it →</a></li>
+      </ul>
+    </header>
+
+    <!-- HERO -->
+    <section class="hero container" id="top">
+      <div class="hero-grid">
+        <div>
+          <div class="hero-tag">
+            <span id="type-line">scope-gated · local-first · MCP-aware</span><span class="cursor"></span>
+          </div>
+          <h1>
+            <span class="void-title" data-text="THE VOID">THE VOID</span><br />
+            <span style="color: var(--muted); font-weight: 600; font-size: 0.55em; letter-spacing: 0.02em;">
+              gravity well for red team AI
+            </span>
+          </h1>
+          <p class="hero-copy">
+            Not another chatbot that “suggests nmap.” THE VOID is an
+            <strong style="color: var(--text);">operator-authorized AI red team</strong> —
+            real Kali execution, a scope gate that holds like an event horizon,
+            WORM audit memory nothing escapes, and MCP treated as both
+            <em>attack surface</em> and <em>C2 path</em>.
+          </p>
+          <div class="hero-actions">
+            <a class="btn btn-primary" href="#ops">Cross the horizon</a>
+            <a class="btn btn-ghost" href="#pipeline">See the phases</a>
+            <a class="btn btn-rose" href="#surfaces">CLI vs Command Center</a>
+          </div>
+          <div class="hero-meta">
+            <span>Local-first</span>
+            <span>Auditable</span>
+            <span>Scope-gated</span>
+            <span>Red team native</span>
+          </div>
+        </div>
+
+        <div class="term" aria-label="Live terminal simulation">
+          <div class="term-bar">
+            <span class="term-dot r"></span>
+            <span class="term-dot y"></span>
+            <span class="term-dot g"></span>
+            <span class="term-title">void@operator — session</span>
+          </div>
+          <div class="term-body" id="term-session">
+            <div><span class="prompt">void@kali</span>:<span class="cyan">~</span>$ <span class="cmd">initializing…</span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- MARQUEE -->
+    <div class="signal" id="signal">
+      <div class="signal-track" aria-hidden="true">
+        <span class="live">● EVENT HORIZON</span>
+        <span>WARLOG WORM</span>
+        <span class="hot">HMAC CHAIN</span>
+        <span class="cool">MCP C2</span>
+        <span>FROSTY AGENT</span>
+        <span class="hot">AUTHZ GATE</span>
+        <span>BONEYARD</span>
+        <span class="cool">SINGULARITY OF EVIDENCE</span>
+        <span>INJECTION DEFENSE</span>
+        <span class="live">● DRY-RUN FIRST</span>
+        <span>RECON → EVIDENCE → REPORT</span>
+        <span class="hot">NO EGRESS TELEMETRY</span>
+        <!-- duplicate for seamless loop -->
+        <span class="live">● EVENT HORIZON</span>
+        <span>WARLOG WORM</span>
+        <span class="hot">HMAC CHAIN</span>
+        <span class="cool">MCP C2</span>
+        <span>FROSTY AGENT</span>
+        <span class="hot">AUTHZ GATE</span>
+        <span>BONEYARD</span>
+        <span class="cool">SINGULARITY OF EVIDENCE</span>
+        <span>INJECTION DEFENSE</span>
+        <span class="live">● DRY-RUN FIRST</span>
+        <span>RECON → EVIDENCE → REPORT</span>
+        <span class="hot">NO EGRESS TELEMETRY</span>
+      </div>
+    </div>
+
+    <!-- WHY / SIGNAL -->
+    <section class="section container reveal" id="why">
+      <div class="section-label">01 · The pull</div>
+      <h2>Scanners miss the agent.<br />Agents bend the blast radius.</h2>
+      <p class="lead">
+        Agentic AI and MCP tool chains don’t just “help operators” — they warp
+        what an unsupervised process can touch. THE VOID exists for red teamers
+        who already feel that gravity. We built the control plane first, then
+        wired the weapons.
+      </p>
+
+      <div class="grid-3">
+        <article class="card">
+          <div class="card-icon acid">01</div>
+          <h3>Real execution</h3>
+          <p>
+            nmap, nuclei, hydra, crackmapexec — through a single Executor choke point.
+            List-argv preferred. Timeouts enforced. No “pretend recon.”
+          </p>
+          <span class="tag">core/executor</span>
+        </article>
+        <article class="card">
+          <div class="card-icon cyan">02</div>
+          <h3>Evidence that bites</h3>
+          <p>
+            WarLog is WORM + HMAC-chained. Boneyard is integrity-backed findings memory.
+            If someone tampers, the chain breaks — and you can prove it.
+          </p>
+          <span class="tag">warlog · boneyard</span>
+        </article>
+        <article class="card">
+          <div class="card-icon rose">03</div>
+          <h3>Governance as code</h3>
+          <p>
+            AuthorizationGate, mode contracts, denied phases, optional strict difficulty.
+            The agent can be told <em>no</em> before a single tool fires.
+          </p>
+          <span class="tag">authz · ROE JSON</span>
+        </article>
+      </div>
+    </section>
+
+    <!-- MANIFESTO -->
+    <section class="section container reveal">
+      <div class="manifesto">
+        <p>
+          “If your red team AI can’t refuse an out-of-scope host, it isn’t an operator tool —
+          it’s a black hole with no horizon. Everything falls in. Nothing is accountable.”
+        </p>
+        <footer>— Operator doctrine · THE VOID</footer>
+      </div>
+    </section>
+
+    <!-- STACK -->
+    <section class="section container reveal" id="stack">
+      <div class="section-label">02 · The stack</div>
+      <h2>Architecture operators actually recognize</h2>
+      <p class="lead">
+        CLI and Command Center are faces. ChaosEngine is the spine. Frosty runs the phases.
+        Everything important lands in WarLog and Boneyard.
+      </p>
+
+      <div class="arch">
+        <div class="arch-row">
+          <div class="arch-box rose">
+            <strong>Operator surfaces</strong>
+            <span>CLI · Command Center · run.py</span>
+          </div>
+        </div>
+        <div class="arch-arrow">▼</div>
+        <div class="arch-row">
+          <div class="arch-box cyan">
+            <strong>ChaosEngine</strong>
+            <span>orchestrate · lifecycle</span>
+          </div>
+          <div class="arch-box cyan">
+            <strong>AuthzGate</strong>
+            <span>scope · ROE</span>
+          </div>
+          <div class="arch-box cyan">
+            <strong>Difficulty</strong>
+            <span>explore / exploit / abort</span>
+          </div>
+        </div>
+        <div class="arch-arrow">▼</div>
+        <div class="arch-row">
+          <div class="arch-box acid">
+            <strong>Frosty</strong>
+            <span>mode-gated phase pipeline</span>
+          </div>
+          <div class="arch-box">
+            <strong>InjectionDefense</strong>
+            <span>sanitize tool I/O</span>
+          </div>
+          <div class="arch-box">
+            <strong>Executor</strong>
+            <span>Kali tool choke point</span>
+          </div>
+        </div>
+        <div class="arch-arrow">▼</div>
+        <div class="arch-row">
+          <div class="arch-box">
+            <strong>recon/</strong>
+            <span>osint · ports · web · host</span>
+          </div>
+          <div class="arch-box">
+            <strong>exploit/</strong>
+            <span>creds · smb · web · cve · cloud</span>
+          </div>
+          <div class="arch-box">
+            <strong>c2/ · mcp</strong>
+            <span>daemon · MCPC2 · chain</span>
+          </div>
+        </div>
+        <div class="arch-arrow">▼</div>
+        <div class="arch-row">
+          <div class="arch-box acid">
+            <strong>WarLog</strong>
+            <span>WORM telemetry · spans</span>
+          </div>
+          <div class="arch-box acid">
+            <strong>Boneyard</strong>
+            <span>findings · integrity</span>
+          </div>
+          <div class="arch-box acid">
+            <strong>Reporter</strong>
+            <span>HTML · MD · JSON</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- PIPELINE / MODES -->
+    <section class="section container reveal" id="pipeline">
+      <div class="section-label">03 · The hunt</div>
+      <h2>Modes are contracts, not vibes</h2>
+      <p class="lead">
+        <code style="color: var(--acid);">quick</code> will never “accidentally” become destruction.
+        Phase lists are explicit. Demo ROE strips the high-risk paths. Chaos exists —
+        behind a denylist you control.
+      </p>
+
+      <div style="overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius);">
+        <table class="modes">
+          <thead>
+            <tr>
+              <th>Mode</th>
+              <th>What runs</th>
+              <th>Operator note</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><span class="mode-name">quick</span></td>
+              <td>recon only</td>
+              <td><span class="badge demo">demo default</span></td>
+            </tr>
+            <tr>
+              <td><span class="mode-name">stealth</span></td>
+              <td>recon · exploit · network_bypass · mcp_scan</td>
+              <td><span class="badge demo">lab safe-ish</span></td>
+            </tr>
+            <tr>
+              <td><span class="mode-name">full</span></td>
+              <td>+ data_theft · llm_jailbreak · c2 · mcp_attack · mcp_chain</td>
+              <td><span class="badge">scoped eng.</span></td>
+            </tr>
+            <tr>
+              <td><span class="mode-name">aggressive</span></td>
+              <td>+ cloud · k8s · cve · mcp_c2 · advanced_jailbreak</td>
+              <td><span class="badge warn">explicit ROE</span></td>
+            </tr>
+            <tr>
+              <td><span class="mode-name">chaos</span></td>
+              <td>+ crypto_theft · persistent_exfil · zero_click · destruction …</td>
+              <td><span class="badge warn">deny in demos</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="pipeline">
+        <span class="pipe ok">recon</span>
+        <span class="pipe">exploit</span>
+        <span class="pipe">data_theft</span>
+        <span class="pipe">llm_jailbreak</span>
+        <span class="pipe">network_bypass</span>
+        <span class="pipe">c2</span>
+        <span class="pipe">mcp_scan</span>
+        <span class="pipe">mcp_attack</span>
+        <span class="pipe">mcp_chain</span>
+        <span class="pipe hot">mcp_c2</span>
+        <span class="pipe hot">destruction</span>
+      </div>
+    </section>
+
+    <!-- CAPABILITIES -->
+    <section class="section container reveal" id="kit">
+      <div class="section-label">04 · The kit</div>
+      <h2>From recon to C2 — modular, not monolithic</h2>
+      <p class="lead">
+        Every module is a sharp tool. Frosty composes them into a hunt.
+        You still own ROE. You still own the keyboard.
+      </p>
+
+      <div class="grid-2">
+        <article class="card">
+          <div class="card-icon cyan">R</div>
+          <h3>Recon</h3>
+          <p>OSINT, portscan, webrecon, host enum — amass, nmap, nuclei, gobuster, smbclient, and friends when the box has them.</p>
+          <span class="tag">recon/*</span>
+        </article>
+        <article class="card">
+          <div class="card-icon rose">X</div>
+          <h3>Exploit</h3>
+          <p>Creds, SMB, web, CVE modules, cloud (AWS/Azure/GCP), k8s, wireless/IoT — gated by mode and denylist.</p>
+          <span class="tag">exploit/*</span>
+        </article>
+        <article class="card">
+          <div class="card-icon violet">C</div>
+          <h3>C2 &amp; post-ex</h3>
+          <p>Custom daemon + beacons, MCPC2 over tool calls, data theft, network bypass, post-exploit handlers.</p>
+          <span class="tag">c2/* · modules/*</span>
+        </article>
+        <article class="card">
+          <div class="card-icon amber">D</div>
+          <h3>Defense on the way in</h3>
+          <p>InjectionDefense sanitizes adversarial tool output before it re-enters agent context. Pattern families. Quarantine.</p>
+          <span class="tag">agent/injection_defense</span>
+        </article>
+      </div>
+    </section>
+
+    <!-- MCP -->
+    <section class="section container reveal" id="mcp">
+      <div class="section-label">05 · MCP reality</div>
+      <h2>Model Context Protocol is the new perimeter</h2>
+      <p class="lead">
+        Everyone is wiring agents to tools. Few are red-teaming that wire.
+        THE VOID treats MCP as first-class: scan it, attack it, chain it, beacon through it —
+        and ship defensive MCP tooling under <code style="color: var(--cyan);">mcp-tools/</code>.
+      </p>
+
+      <div class="grid-3">
+        <article class="card">
+          <div class="card-icon rose">A</div>
+          <h3>MCPAttack</h3>
+          <p>Enumerate tools, auth posture, attack-class patterns, CVE-shaped findings on MCP servers.</p>
+        </article>
+        <article class="card">
+          <div class="card-icon cyan">C</div>
+          <h3>MCPChain</h3>
+          <p>Compose findings into multi-step DAGs. Detect cross-server cascades before they become surprises.</p>
+        </article>
+        <article class="card">
+          <div class="card-icon acid">2</div>
+          <h3>MCPC2</h3>
+          <p>Post-ex C2 that blends into legitimate tool traffic. Beacons in. Tasks out. Health checks. Rotation.</p>
+        </article>
+      </div>
+    </section>
+
+    <!-- SURFACES CONTRAST -->
+    <section class="section container reveal" id="surfaces">
+      <div class="section-label">06 · Two faces</div>
+      <h2>Glow on the outside. Instruments on the glass.</h2>
+      <p class="lead">
+        This site is the accretion disk — heat, pull, attitude.
+        When you drop into the real tools, the aesthetic flips to
+        <strong style="color: var(--text);">clean operator chrome</strong>.
+        Marketing is the event horizon story. Ops is the cockpit.
+      </p>
+
+      <div class="dual">
+        <div class="dual-pane edge">
+          <div class="sub">Marketing edge · this site</div>
+          <h3>Black-hole signal</h3>
+          <ul>
+            <li>Singularity field, photon-ring palette, terminal theater</li>
+            <li>Red-team language, zero corporate soft-serve</li>
+            <li>Show the threat model, not a pricing table</li>
+            <li>Built to pull operators into the room</li>
+          </ul>
+        </div>
+        <div class="dual-pane ops">
+          <div class="sub">Operator surface · CLI / CC</div>
+          <h3>Professional, dense, quiet</h3>
+          <ul>
+            <li>CLI: click + rich tables, client-safe banners</li>
+            <li>Command Center: Palantir-style dark grids, 13px body</li>
+            <li>Localhost only · no multi-tenant theater</li>
+            <li>Evidence panes: WarLog, Boneyard, integrity, reports</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="warn-strip">
+        <strong style="color: var(--amber);">Operator note:</strong>
+        Command Center binds <code>127.0.0.1:7070</code> only.
+        It monitors and reports — it does not replace CLI engagement control.
+      </div>
+    </section>
+
+    <!-- AUDIENCE -->
+    <section class="section container reveal" id="who">
+      <div class="section-label">07 · Who this is for</div>
+      <h2>If you live on the red side of the keyboard</h2>
+      <div class="audience-list" style="margin-top: 1.5rem;">
+        <div class="audience-item">
+          <div class="num">01</div>
+          <div>
+            <h4>Red team operators</h4>
+            <p>Want agentic speed without unsupervised blast radius. ROE as code. Evidence on exit.</p>
+          </div>
+        </div>
+        <div class="audience-item">
+          <div class="num">02</div>
+          <div>
+            <h4>Purple / detection engineers</h4>
+            <p>Need realistic agent + MCP tradecraft to build detections that aren’t stuck in 2019.</p>
+          </div>
+        </div>
+        <div class="audience-item">
+          <div class="num">03</div>
+          <div>
+            <h4>AI security researchers</h4>
+            <p>Jailbreak loops, injection defense, MCP cascades — lab-grade, not slideware.</p>
+          </div>
+        </div>
+        <div class="audience-item">
+          <div class="num">04</div>
+          <div>
+            <h4>Demo audiences (lab)</h4>
+            <p>See dry-run → live recon → integrity → report without internet spray-and-pray.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- INTERACTIVE DEMO TABS -->
+    <section class="section container reveal" id="demo">
+      <div class="section-label">08 · Field notes</div>
+      <h2>What the session actually looks like</h2>
+      <p class="lead">
+        No pricing. No “request a quote.” Just the rhythm operators already know —
+        plan, execute, prove, deliver.
+      </p>
+
+      <div class="demo-shell">
+        <div class="demo-tabs" role="tablist">
+          <button class="demo-tab active" type="button" data-pane="dryrun">dry-run</button>
+          <button class="demo-tab" type="button" data-pane="recon">recon + report</button>
+          <button class="demo-tab" type="button" data-pane="mcp">MCP path</button>
+          <button class="demo-tab" type="button" data-pane="ops">operator surfaces</button>
+        </div>
+        <pre class="demo-body" id="demo-body"></pre>
+      </div>
+    </section>
+
+    <!-- OPS / RUN -->
+    <section class="section container reveal" id="ops">
+      <div class="cta-band">
+        <div class="section-label" style="justify-content: center;">09 · Drop in</div>
+        <h2>Enter the void. Own the scope.</h2>
+        <p>
+          Lab only unless you have paper. Prefer <code>--profile demo</code>.
+          Read the Operator Bible. Launch the Command Center on localhost.
+          Then hunt like gravity is optional — because with ROE, it is.
+        </p>
+        <div class="cta-actions">
+          <a class="btn btn-primary" href="#commands">Show commands</a>
+          <a class="btn btn-ghost" href="../docs/OPERATOR_GUIDE.md">Operator guide</a>
+          <a class="btn btn-rose" href="../CLIENT_TESTING.md">Client testing guide</a>
+        </div>
+      </div>
+
+      <div id="commands" class="demo-shell" style="margin-top: 1.5rem;">
+        <div class="term-bar">
+          <span class="term-dot r"></span>
+          <span class="term-dot y"></span>
+          <span class="term-dot g"></span>
+          <span class="term-title">quickstart — authorized lab</span>
+        </div>
+        <pre class="demo-body" style="min-height: auto;"># from The_Void repo root
+python3 -m pip install -r requirements.txt
+
+# governed dry-run (projector safe)
+python3 run.py recon 127.0.0.1 --profile demo --dry-run
+
+# live lab recon
+python3 run.py recon 127.0.0.1 --profile demo
+
+# deliverable
+python3 run.py report --format html -o results/demo-report.html \
+  --operator "Demo Operator" --name "Lab Demo"
+
+# Command Center (clean professional UI)
+PYTHONPATH=. python -m commandcenter.backend.main
+# → http://127.0.0.1:7070
+
+# this marketing site
+cd website && python3 -m http.server 8088 --bind 127.0.0.1
+# → http://127.0.0.1:8088</pre>
+      </div>
+    </section>
+
+    <!-- FOOTER -->
+    <footer class="footer">
+      <div class="container footer-grid">
+        <div>
+          <a class="nav-brand" href="#top" style="margin-bottom: 1rem; display: inline-flex;">
+            <span class="nav-mark">V</span>
+            THE VOID
+          </a>
+          <p>
+            Operator-authorized AI red team — local, auditable, MCP-aware.
+            Black-hole aesthetic for red team audiences. Not a SaaS checkout page.
+          </p>
+          <p style="margin-top: 0.75rem; font-family: var(--font-mono); font-size: 0.75rem; color: var(--dim);">
+            Authored for demo · Blackfrost AI · Frost steward
+          </p>
+        </div>
+        <div>
+          <h4>Navigate</h4>
+          <ul>
+            <li><a href="#stack">Stack</a></li>
+            <li><a href="#pipeline">Pipeline</a></li>
+            <li><a href="#mcp">MCP</a></li>
+            <li><a href="#surfaces">Surfaces</a></li>
+            <li><a href="#ops">Run</a></li>
+          </ul>
+        </div>
+        <div>
+          <h4>Operator docs</h4>
+          <ul>
+            <li><a href="../docs/OPERATOR_GUIDE.md">Operator guide</a></li>
+            <li><a href="../README.md">README</a></li>
+            <li><a href="../CLIENT_TESTING.md">Client testing guide</a></li>
+            <li><a href="../commandcenter/README.md">Command Center</a></li>
+          </ul>
+        </div>
+      </div>
+      <div class="container footer-bottom">
+        <span>AUTHORIZED USE ONLY · WRITTEN ROE REQUIRED</span>
+        <span>NO PRICING · NO BILLING · JUST THE HUNT</span>
+      </div>
+    </footer>
+  </div>
+
+  <script src="js/app.js"></script>
+</body>
+</html>

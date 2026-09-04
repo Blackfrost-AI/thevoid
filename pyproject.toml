@@ -1,0 +1,92 @@
+# THE VOID — modern Python project configuration.
+# Private / commercial proprietary. This file centralizes build metadata,
+# lint, type-check, and coverage configuration for the core platform.
+#
+# NOTE: Packaging entrypoints remain in setup.py for now (console scripts are
+# installed via `pip install -e .`). pyproject.toml and setup.py must stay in sync.
+
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "the-void"
+version = "1.1.0"
+description = "Operator-authorized AI red team — local, auditable, MCP-aware."
+authors = [{ name = "Blackfrost AI", email = "void@thevoid.local" }]
+requires-python = ">=3.10"
+license = { text = "Proprietary" }
+# Dependencies are authoritative in setup.py and mirrored in requirements.txt.
+dynamic = ["dependencies"]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-cov>=4.1.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-timeout>=2.3.0",
+    "ruff>=0.11.0",
+    "black>=23.0.0",
+    "isort>=5.12.0",
+    "mypy>=1.5.0",
+    "flake8>=6.1.0",
+]
+
+[project.scripts]
+void = "run:main"
+thevoid = "cli.app:main"
+
+[tool.setuptools]
+# Keep packaging lean; sub-packages are auto-discovered from the tree.
+py-modules = ["run"]
+
+[tool.setuptools.packages.find]
+include = [
+    "core*", "agent*", "orchestrator*", "recon*", "exploit*",
+    "modules*", "c2*", "cli*", "config*", "llm*", "scenarios*",
+    "commandcenter", "commandcenter.backend*",
+]
+exclude = [
+    "tests*", "commandcenter.tests*", "commandcenter.frontend*",
+]
+
+# ── Linting (ruff) ────────────────────────────────────────────────────
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+# Start permissive: enable the safety/bug-catch rules, expand over time.
+lint.select = ["E", "F", "W", "I", "B", "S", "UP", "ASYNC", "C4"]
+lint.ignore = [
+    "S101",    # assert is fine in tests
+    "E501",    # long lines tolerated while codebase is normalized
+]
+lint.per-file-ignores = { "tests/**" = ["B011", "S603", "S607"] }
+
+# ── Type checking (mypy) ──────────────────────────────────────────────
+[tool.mypy]
+python_version = "3.11"
+warn_unused_ignores = true
+ignore_missing_imports = true
+# Gradual typing: start loose, opt-in strictness per package as it's annotated.
+disable_error_code = []
+follow_imports = "silent"
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+ignore_errors = true
+
+# ── Coverage ──────────────────────────────────────────────────────────
+[tool.coverage.run]
+branch = true
+source = ["core", "agent", "orchestrator", "recon", "exploit", "modules", "c2", "cli", "config"]
+omit = ["*/tests/*", "*/__init__.py"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__ == .__main__.:",
+    "raise NotImplementedError",
+    "@overload",
+]

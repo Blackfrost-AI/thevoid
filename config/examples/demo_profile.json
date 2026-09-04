@@ -1,0 +1,20 @@
+{
+  "AGENT_NAME": "Frosty",
+  "AGENT_VERSION": "1.1.0-demo",
+  "AGENT_TAGLINE": "Operator-authorized AI red team — local, auditable, MCP-aware",
+  "CLIENT_MODE": true,
+  "STRICT_DIFFICULTY": true,
+  "REQUIRE_AUTHORIZATION": true,
+  "AUTHORIZATION_FILE": "config/examples/authorization.demo.json",
+  "DEFAULT_ENGAGE_MODE": "quick",
+  "DENY_HIGH_RISK_PHASES": true,
+  "HIGH_RISK_PHASES": [
+    "destruction",
+    "crypto_theft",
+    "persistent_exfil",
+    "zero_click"
+  ],
+  "LOG_LEVEL": "INFO",
+  "STEALTH_TOR_ENABLED": false,
+  "notes": "Local fictional demo profile. Prefer: thevoid recon 127.0.0.1 --profile demo --dry-run"
+}

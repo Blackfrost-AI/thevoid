@@ -1,0 +1,96 @@
+# THE VOID — root gitignore (commercial private repo hygiene)
+# Never commit secrets, runtime DBs, models, or dependency trees.
+
+# ── Secrets & credentials ──────────────────────────────────
+.secrets_quarantine/
+**/secrets/
+**/*credentials*
+**/*service-account*.json
+**/*-key.json
+GCP access/
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+id_rsa*
+*.p12
+*.pfx
+*.keystore
+
+# ── Runtime state & operational data ───────────────────────
+boneyard/*.db
+boneyard/*.db-*
+warlog/*.db
+warlog/*.db-*
+warlog/*.db.gz
+opentor/database/*.db
+opentor/database/*.db-*
+*.log
+void.log
+results/
+loot/
+c2_data/
+.shadow/sessions/
+.shadow/checkpoints/
+commandcenter/exports/
+commandcenter/session_state.db
+commandcenter/**/__pycache__/
+snowblind/state/
+Frosty/.shadow/
+Frosty/memory/private/
+
+# ── Local models (never ship weights in git) ───────────────
+INTERNAL_MODEL/
+*.gguf
+*.bin
+*.safetensors
+*.pt
+*.onnx
+
+# ── Python ─────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+/dist/
+/build/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.tox/
+*.egg
+
+# ── Node ───────────────────────────────────────────────────
+node_modules/
+npm-debug.log*
+yarn-error.log*
+# package-lock.json files are committed for reproducible private builds
+
+# ── OS / editor ────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+*.swp
+*~
+.idea/
+.vscode/
+*.code-workspace
+*.sublime-*
+
+# ── Archive (local operator tarballs — never commit) ───────
+archive/
+
+# ── Quarantine / temp ──────────────────────────────────────
+results/quarantine/
+tmp/
+/tmp_void/
+*.tmp
+*.bak
+
+# ── Documentation build intermediates ─────────────────────
+docs/*.print.html

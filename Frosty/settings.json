@@ -1,0 +1,13 @@
+{
+  "agent": {
+    "name": "Frosty",
+    "role": "operator-facing security validation agent",
+    "workspace": "THE VOID",
+    "authorization_required": true
+  },
+  "data": {
+    "local_only": true,
+    "commit_runtime_records": false,
+    "redact_sensitive_values": true
+  }
+}
