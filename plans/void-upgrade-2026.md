@@ -9,7 +9,13 @@ gets 8.5 while runtime lock pins 8.1.8.
 0. Fix baseline: VOID_AUTH_MODE dev|strict switch (default strict, fails closed;
    dev = legacy on/off via REQUIRE_AUTHORIZATION), click compat shim in test.
 1. P0-1 llm/providers.py + llm/frosty_brain.py — local-first provider layer,
-   zero-egress default, WarLog-audited calls.
+   zero-egress default, WarLog-audited calls. [done 2026-09-29: providers.py
+   + frosty_brain.py + tests/test_llm_providers.py (20 tests). Fixed
+   ProviderRegistry.pick() to truly prefer local providers over registration
+   order. frosty_brain audits one WarLog record per call (ok and all failure
+   paths) with call_id, model, provider, latency, usage, sampling params,
+   prompt SHA-256 only — never prompt text — plus egress decision. Evidence
+   write failure never masks the call.]
 2. P0-2 c2/profiles.py malleable profiles; encrypted handshake on daemon
    (ECDH via existing Crypto); fix c2_infrastructure listener (argv exec, auth,
    bind 127.0.0.1); cloud transports (S3 poll, webhook).
