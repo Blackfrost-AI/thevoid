@@ -167,6 +167,26 @@ class Executor:
 
         return result
 
+    def run_command(self, command: Union[str, List[str]], timeout: Optional[int] = None,
+                    cwd: Optional[str] = None, env: Optional[Dict[str, str]] = None,
+                    shell: Optional[bool] = None, capture_output: bool = True,
+                    stdin: Optional[str] = None) -> CommandResult:
+        """Alias for :meth:`run` (C2 daemon / commands call sites).
+
+        Same argv-first execution policy as :meth:`run`: lists run with
+        shell=False; strings are shlex-split into argv form unless the caller
+        explicitly requests shell=True.
+        """
+        return self.run(
+            command,
+            timeout=timeout,
+            cwd=cwd,
+            env=env,
+            shell=shell,
+            capture_output=capture_output,
+            stdin=stdin,
+        )
+
     def run_tool(self, tool: str, args: List[str], timeout: Optional[int] = None,
                  cwd: Optional[str] = None, env: Optional[Dict[str, str]] = None) -> CommandResult:
         """Run a specific Kali tool with arguments.

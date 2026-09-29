@@ -179,6 +179,39 @@ class Crypto:
         logger.info("Encryption key rotated (key material not logged)")
         return self._key
 
+    def advance_key(self, info: bytes) -> bytes:
+        """Derive the next key deterministically from the current key.
+
+        Both peers holding the same key and calling with the same ``info``
+        end up on the same new key (session re-keying); the old key is
+        discarded. Key material is never logged.
+        """
+        import hashlib
+        import hmac as _hmac
+
+        self._key = _hmac.new(self._key, b"void-rekey" + info, hashlib.sha256).digest()
+        return self._key
+
+    # ─── String compat API ──────────────────────────────────────────────────
+
+    def encrypt(self, plaintext: str) -> str:
+        """Encrypt a string to a base64 transport blob.
+
+        String-level counterpart of :meth:`encrypt_json` for wire protocols
+        (C2 daemon/beacon/commands) that carry opaque string payloads.
+        """
+        import json
+
+        encrypted = self.encrypt_aes(plaintext)
+        return base64.b64encode(json.dumps(encrypted).encode()).decode()
+
+    def decrypt(self, blob: str) -> str:
+        """Decrypt a blob produced by :meth:`encrypt` back to a string."""
+        import json
+
+        encrypted = json.loads(base64.b64decode(blob))
+        return self.decrypt_aes(encrypted["ciphertext"], encrypted["nonce"])
+
     def hash_password(self, password: str, salt: Optional[bytes] = None) -> Dict[str, str]:
         """Hash a password using PBKDF2-HMAC-SHA256 (600k iterations)."""
         if salt is None:

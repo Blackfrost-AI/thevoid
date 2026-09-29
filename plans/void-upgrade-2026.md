@@ -18,7 +18,21 @@ gets 8.5 while runtime lock pins 8.1.8.
    write failure never masks the call.]
 2. P0-2 c2/profiles.py malleable profiles; encrypted handshake on daemon
    (ECDH via existing Crypto); fix c2_infrastructure listener (argv exec, auth,
-   bind 127.0.0.1); cloud transports (S3 poll, webhook).
+   bind 127.0.0.1); cloud transports (S3 poll, webhook). [done 2026-09-29:
+   c2/handshake.py (ECDH-P256 + HMAC transcript auth, replay/freshness cache,
+   deterministic session re-key), c2/profiles.py (reversible transforms:
+   prepend/append/base64/xor-mask, HTTP shape, jitter; 2 built-ins; JSON
+   load/save/validate), c2/transports.py (WebhookTransport + S3PollTransport
+   with injectable requests/boto3-like clients; send/send_task/receive/
+   receive_result; WarLog-evidenced every op), hardened listener (loopback
+   bind, bearer-token /exec with constant-time compare, argv-only shell=False,
+   private 0700/0600 state dir, render_listener_source() testable seam),
+   ECDH handshake wired into C2Daemon (fail-closed require_handshake=True,
+   session-sealed command channel) + Beacon.perform_handshake. Fixed latent
+   bugs: Crypto.encrypt/decrypt + Executor.run_command compat (used across
+   c2/ but missing), Session.rotate now deterministic (Crypto.advance_key),
+   HandshakeClient.hello was missing its type field, exploit/__init__.py
+   C2Infrastructure export restored (stale syntax-error note). 68 new tests.]
 3. P0-3 agent/sentinel.py dual-LLM ROE reviewer + provenance tagging.
 4. P1-1 agent/planner.py agentic planner over Boneyard + phase registry,
    operator approval gate, max-branch/time-box limits.
