@@ -75,6 +75,7 @@ class ChaosEngine:
         self.authz = AuthorizationGate(
             authz_path=authz_path or None,
             require_authorization=require_authz,
+            auth_mode=self.settings.get("AUTH_MODE") or None,
         )
         # Propagate denied phases + client policy into the agent
         self.agent.authz = self.authz

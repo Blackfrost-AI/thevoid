@@ -36,6 +36,12 @@ CLIENT_MODE = True
 STRICT_DIFFICULTY = True
 REQUIRE_AUTHORIZATION = True
 AUTHORIZATION_FILE = ""  # path to JSON/YAML scope document
+# "strict" (default): authorization documents are mandatory, fail closed.
+# "dev": engagements without a valid document are allowed, loudly logged.
+# Empty string defers to the VOID_AUTH_MODE environment variable, which
+# itself defaults to strict. Legacy REQUIRE_AUTHORIZATION=false no longer
+# weakens the gate — AUTH_MODE=dev is the only sanctioned bypass.
+AUTH_MODE = ""
 DEFAULT_ENGAGE_MODE = "full"
 DENY_HIGH_RISK_PHASES = True
 DRY_RUN = False

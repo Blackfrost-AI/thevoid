@@ -213,7 +213,16 @@ class ShadowAgent:
 
         # Governance hooks (set by ChaosEngine when authz/profile is active)
         self.authz = None  # Optional[AuthorizationGate]
-        self.extra_denied_phases: set = set()
+        # Default-deny high-risk phases: every engagement starts with the
+        # configured high-risk phase set denied (client-safety contract,
+        # hardened in 8ad2cf0). Callers that need the full phase list clear
+        # this set explicitly (e.g. authorized lab profiles, tests).
+        if self.settings.get("DENY_HIGH_RISK_PHASES", True):
+            self.extra_denied_phases: set = set(
+                self.settings.get("HIGH_RISK_PHASES") or []
+            )
+        else:
+            self.extra_denied_phases = set()
 
         # Phase-progress observer (W4-2.2a). Optional callable receiving
         # phase lifecycle events during engage():

@@ -43,6 +43,34 @@ from urllib.parse import urlparse
 
 logger = logging.getLogger("void.authorization")
 
+# ─── Auth mode (dev | strict) ───────────────────────────────────────────────
+# strict (default): authorization documents are mandatory and validated;
+#   missing/invalid documents fail closed.
+# dev: development sandbox mode. The gate stays fully functional but an
+#   absent/invalid document is *allowed* (with a loud WARNING and a WarLog
+#   trail) instead of denied. Targets explicitly marked out_of_scope in a
+#   loaded document remain denied even in dev mode.
+AUTH_MODE_ENV = "VOID_AUTH_MODE"
+AUTH_MODE_STRICT = "strict"
+AUTH_MODE_DEV = "dev"
+
+
+def resolve_auth_mode(value: Optional[str] = None) -> str:
+    """Resolve the auth mode from an explicit value, env, or default.
+
+    Priority: explicit value > VOID_AUTH_MODE env > strict default.
+    Accepts the legacy on/off vocabulary: on -> strict, off -> dev.
+    """
+    raw = value if value is not None else os.environ.get(AUTH_MODE_ENV, "")
+    raw = (raw or "").strip().lower()
+    if raw in ("", AUTH_MODE_STRICT, "on", "required", "true"):
+        return AUTH_MODE_STRICT
+    if raw in (AUTH_MODE_DEV, "off", "disabled", "false"):
+        return AUTH_MODE_DEV
+    raise ValueError(
+        f"Invalid auth mode {raw!r}; expected '{AUTH_MODE_STRICT}' or '{AUTH_MODE_DEV}'"
+    )
+
 
 @dataclass
 class AuthzDecision:
@@ -150,9 +178,14 @@ class AuthorizationGate:
         authz_path: Optional[str] = None,
         require_authorization: bool = True,
         data: Optional[Dict[str, Any]] = None,
+        auth_mode: Optional[str] = None,
     ):
         self.authz_path = authz_path
-        self.require_authorization = True
+        # `require_authorization` is accepted for source compatibility only:
+        # the hardened gate is fail-closed and no legacy flag can weaken it.
+        # The ONLY sanctioned bypass is an explicit dev mode.
+        self.auth_mode = resolve_auth_mode(auth_mode)
+        self.require_authorization = self.auth_mode == AUTH_MODE_STRICT
         self._data: Optional[Dict[str, Any]] = data
         if data is None and authz_path and os.path.isfile(authz_path):
             self._data = _load_raw(authz_path)
@@ -161,18 +194,35 @@ class AuthorizationGate:
             logger.info("Authorization loaded from in-memory document")
         else:
             logger.debug(
-                "No authorization file (require=%s)", require_authorization
+                "No authorization file (mode=%s)", self.auth_mode
+            )
+        if self.auth_mode == AUTH_MODE_DEV:
+            logger.warning(
+                "AUTH MODE = dev: engagements without a valid authorization "
+                "document are ALLOWED. Never use outside an isolated lab."
             )
 
     @property
     def loaded(self) -> bool:
         return self._data is not None
 
+    def _dev_bypass(self, reason: str) -> AuthzDecision:
+        """Dev-mode bypass decision. Loudly labeled, never silent."""
+        logger.warning("DEV AUTH BYPASS: %s", reason)
+        return AuthzDecision(
+            allowed=True,
+            reason=f"dev auth mode: {reason}",
+            engagement_name="DEV-LOCAL",
+            operator="dev",
+        )
+
     def check_target(self, target_value: str, mode: str = "full") -> AuthzDecision:
         """Return whether *target_value* may be engaged under *mode*."""
         data = self._data
 
         if data is None:
+            if self.auth_mode == AUTH_MODE_DEV:
+                return self._dev_bypass("no authorization document loaded")
             return AuthzDecision(
                 allowed=False,
                 reason="A valid authorization file is required. Engagement denied.",
@@ -180,12 +230,18 @@ class AuthorizationGate:
 
         error = self._validation_error(data)
         if error:
+            if self.auth_mode == AUTH_MODE_DEV:
+                return self._dev_bypass(f"invalid authorization document: {error}")
             return AuthzDecision(allowed=False, reason=error)
 
         engagement = str(data.get("engagement_name", "") or "")
         operator = str(data.get("operator", "") or "")
         authorized_flag = data.get("authorized", True)
         if authorized_flag is False:
+            if self.auth_mode == AUTH_MODE_DEV:
+                return self._dev_bypass(
+                    "authorization document marks authorized=false"
+                )
             return AuthzDecision(
                 allowed=False,
                 reason="authorization document marks authorized=false",

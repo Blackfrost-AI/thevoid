@@ -789,7 +789,15 @@ class TestChaosEngineGate:
         """Build a ChaosEngine with a stubbed agent (so engage() doesn't run
         the full attack pipeline)."""
         from orchestrator.chaos import ChaosEngine
-        eng = ChaosEngine()
+        from config.settings import Settings
+        s = Settings()
+        s._load_defaults()
+        # Dev auth mode: these gate tests stub the agent and run engage()
+        # without an authorization document. The hardened gate fails closed
+        # in strict mode; dev mode is the sanctioned lab bypass (the gate
+        # logs DEV AUTH BYPASS loudly for every engagement it allows).
+        s.set("AUTH_MODE", "dev")
+        eng = ChaosEngine(s)
         eng.boneyard = boneyard
         eng.assessor = DifficultyAssessor(boneyard=boneyard)
         eng.agent = MagicMock()
@@ -923,10 +931,15 @@ class TestChaosEngineGate:
     def test_assessor_is_connected_to_boneyard(self):
         """ChaosEngine.__init__ must wire the assessor to the boneyard."""
         from orchestrator.chaos import ChaosEngine
-        eng = ChaosEngine()
+        from config.settings import Settings
+        s = Settings()
+        s._load_defaults()  # deterministic: no singleton pollution from other tests
+        eng = ChaosEngine(s)
         assert eng.assessor is not None
         assert eng.assessor.boneyard is eng.boneyard
-        assert eng.strict_difficulty is False
+        # Hardened default (8ad2cf0): STRICT_DIFFICULTY is True and cannot
+        # be disabled via the client configuration file.
+        assert eng.strict_difficulty is True
 
 
 # ═════════════════════════════════════════════════════   Edge cases / invariants

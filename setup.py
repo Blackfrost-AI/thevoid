@@ -32,7 +32,7 @@ setup(
         "pyyaml>=6.0.0",
         "toml>=0.10.0",
         "loguru>=0.7.0",
-        "click>=8.1.0",
+        "click==8.1.8",  # 8.2+ removes CliRunner(mix_stderr=...); matches runtime lock
         "rich>=13.5.0",
         "httpx>=0.25.0",
         "dnspython>=2.4.0",

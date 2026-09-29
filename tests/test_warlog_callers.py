@@ -163,7 +163,14 @@ class TestChaosWarLogSignatures:
 
     def _make_engine(self, warlog):
         from orchestrator.chaos import ChaosEngine
-        eng = ChaosEngine()
+        from config.settings import Settings
+        s = Settings()
+        s._load_defaults()
+        # Dev auth mode: the agent is stubbed and these tests exercise the
+        # warlog call sites, not authorization. Strict mode (the default)
+        # would deny engage() before run() reaches the interrupt handler.
+        s.set("AUTH_MODE", "dev")
+        eng = ChaosEngine(s)
         eng.warlog = warlog
         # The engine delegates to a ShadowAgent; stub it out.
         eng.agent = MagicMock()
