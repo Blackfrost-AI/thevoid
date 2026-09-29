@@ -34,6 +34,18 @@ gets 8.5 while runtime lock pins 8.1.8.
    HandshakeClient.hello was missing its type field, exploit/__init__.py
    C2Infrastructure export restored (stale syntax-error note). 68 new tests.]
 3. P0-3 agent/sentinel.py dual-LLM ROE reviewer + provenance tagging.
+   [done 2026-09-29: Sentinel — deterministic AuthorizationGate check first
+   (out-of-scope/missing/expired/mode-denied short-circuit to DENY with no
+   LLM call), then dual-LLM review over FrostyBrain with fail-closed
+   reconciliation (dual-allow -> ALLOW; any deny -> DENY; abstain/
+   unparsable/crashed reviewer -> DENY; missing secondary under
+   require_dual -> DENY). Provenance dataclass carries both reviewers'
+   model/provider/prompt-SHA-256/call-id + ROE decision + risk + tag().
+   Risk normalization: unknown risk fails closed to high; destructive
+   phases (destruction/crypto_theft/...) never below high. Verdict parser:
+   JSON first, inflection-aware keyword fallback with negation/ambiguity
+   detection (fail closed to abstain). One WarLog record per review;
+   prompt text never recorded. 29 tests.]
 4. P1-1 agent/planner.py agentic planner over Boneyard + phase registry,
    operator approval gate, max-branch/time-box limits.
 5. P1-2 implant/ staged loader + killswitch + expiry; reversible impact mode
