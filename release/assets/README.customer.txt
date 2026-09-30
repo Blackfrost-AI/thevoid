@@ -27,5 +27,5 @@ package-install time. Review its acceptable-use document and run
 Before installation, compare that key's fingerprint and the archive SHA-256
 with the values published through the authenticated Blackfrost customer
 portal. The installer deliberately refuses a key carried inside this bundle.
-See docs/DISTRIBUTION.md in the private source repository for release and
+See docs/OPERATOR_GUIDE.md and the root README for release and
 verification procedures.

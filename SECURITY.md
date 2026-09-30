@@ -65,4 +65,4 @@ of this defensive hardening pass.
 Keep signing keys and client licenses outside Git. Dependency and secret scans
 must cover both lockfiles and the actual eventual artifact. A signature alone
 does not establish build provenance, reproducibility, or runtime correctness.
-See [the hardening handoff](docs/HARDENING_HANDOFF.md) for outstanding gates.
+Open a confidential report through the channel described above for outstanding hardening questions.

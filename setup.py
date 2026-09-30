@@ -12,7 +12,7 @@ setup(
     description="Operator-authorized AI red team — local, auditable, MCP-aware",
     author="Blackfrost AI",
     url="https://github.com/Blackfrost-AI/void_client",
-    license="Proprietary",
+    license="Apache-2.0",
     license_files=("LICENSE",),
     packages=find_packages(
         include=[
@@ -67,7 +67,7 @@ setup(
     classifiers=[
         "Development Status :: 5 - Production/Stable",
         "Intended Audience :: Developers",
-        "License :: Other/Proprietary License",
+        "License :: OSI Approved :: Apache Software License",
         "Operating System :: POSIX :: Linux",
         "Programming Language :: Python :: 3",
         "Programming Language :: Python :: 3.10",

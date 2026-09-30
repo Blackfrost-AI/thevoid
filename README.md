@@ -1,803 +1,135 @@
 # THE VOID
 
-Operator-authorized, local-first security validation for Linux.
+**A local-first security validation engine with tamper-evident evidence, agentic planning, and a browser-first Command Center — in one Python package that never phones home.**
 
-> **Unreleased hardening update:** production handoff is blocked pending legacy
-> evidence migration, installer lifecycle acceptance, and release-owner inputs.
-> Read [the hardening handoff](docs/HARDENING_HANDOFF.md),
-> [security policy](SECURITY.md), and [compatibility changes](CHANGELOG.md)
-> before using existing data or preparing a client download.
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
+[![Python](https://img.shields.io/badge/python-3.10+-green)](https://python.org)
 
-THE VOID combines scope-gated validation, tamper-evident evidence, coverage
-scoring, reporting, continuity checks, and a browser-first Command Center.
-Frosty is the operator-facing agent identity. Runtime evidence remains on the
-operator workstation unless an operator explicitly selects an export.
+THE VOID runs authorized validation against systems you own or test under contract — and leaves a cryptographic paper trail for every step. Evidence is HMAC-chained, Merkle-anchored, and verifiable; the agent maps what it executed to MITRE ATLAS; and the operator stays in control with rules of engagement, approval gates, and kill switches.
 
-> **Authorized use only.** Run active phases only against systems you own or
-> have written permission to test. Confirm the target, time window, permitted
-> techniques, credentials, and restoration plan in the rules of engagement
-> before execution.
+**Local-first means:** no telemetry, no account, no cloud dependency. Your evidence stays on your workstation unless you export it.
 
-This repository is the clean client-testing baseline. It intentionally contains
-no previous customer records, assessment output, credentials, runtime databases,
-session logs, private model weights, or internal research.
+## Why this exists
 
-| Release detail | Value |
-|---|---|
-| THE VOID | 1.1.0 |
-| Command Center | 1.0.0 |
-| Agent identity | Frosty |
-| Primary experience | Local browser console |
-| Gated execution path | <code>thevoid</code> CLI |
-| Supported runtime | Linux, Python 3.10+ |
-| Primary demo platform | Kali Linux |
-| License | Proprietary Blackfrost AI software |
+Most pentest tooling gives you shell access and leaves you to assemble the narrative. THE VOID treats the engagement itself as an evidence-producing system:
 
-## Contents
+- **Tamper-evident evidence** — every event is HMAC-chained and can be Merkle-anchored, so a record of what ran (and what didn't) survives tampering.
+- **Rules of engagement, enforced** — scope-gated execution, dual-LLM ROE review (Sentinel), and operator approval gates on planning. The agent cannot freelance.
+- **Coverage you can measure** — executed phases map to MITRE ATLAS technique IDs, and prevention strength is scored per engagement.
+- **Agentic, but leashed** — the planner proposes next steps from the attack graph; the operator approves. Hard branch and time-box limits.
+- **A Command Center you can demo** — browser console with a deterministic demo mode that touches nothing.
 
-- [Start here: browser demo](#start-here-browser-demo)
-- [What THE VOID is](#what-the-void-is)
-- [Architecture](#architecture)
-- [Repository map](#repository-map)
-- [Requirements](#requirements)
-- [Installation](#installation)
-- [Private commercial distribution](#private-commercial-distribution)
-- [Command Center](#command-center)
-- [Authorization and rules of engagement](#authorization-and-rules-of-engagement)
-- [CLI reference](#cli-reference)
-- [Modes and scenarios](#modes-and-scenarios)
-- [Evidence, integrity, and reporting](#evidence-integrity-and-reporting)
-- [Continuity and drift](#continuity-and-drift)
-- [Bundled components](#bundled-components)
-- [Verification and CI](#verification-and-ci)
-- [Client demonstration playbook](#client-demonstration-playbook)
-- [Runtime data and repository hygiene](#runtime-data-and-repository-hygiene)
-- [Troubleshooting](#troubleshooting)
-- [Documentation and support handoff](#documentation-and-support-handoff)
+## Quickstart
 
-## Start here: browser demo
-
-The production browser bundle is committed, so Node.js is not required just to
-run the client demo.
-
-From the repository root:
-
-~~~bash
+```bash
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
 python -m pip install -e '.[dev]'
 python -m commandcenter.launcher start
-~~~
+```
 
-The launcher opens an authorized browser tab at localhost. A bare
-[http://127.0.0.1:7070](http://127.0.0.1:7070) link intentionally shows a locked
-screen; use `python -m commandcenter.launcher open` to authorize a new tab.
-On an empty workspace,
-select **Explore Demo**, or use the **DEMO OFF** toggle in the top bar. Demo Mode
-loads a deterministic fictional assessment into isolated stores and does not
-contact real targets.
+The launcher opens an authorized browser tab at localhost. On an empty workspace, select **Explore Demo** — Demo Mode loads a deterministic fictional assessment into isolated stores and does not contact real targets.
 
-Useful checks from a second terminal:
+```bash
+curl -fsS http://127.0.0.1:7070/api/health   # expect "ok": true
+thevoid demo                                  # narrated demo, zero network
+thevoid version                               # metadata
+```
 
-~~~bash
-curl -fsS http://127.0.0.1:7070/api/health
-thevoid version
-thevoid status
-~~~
+> **Authorized use only.** Run active phases only against systems you own or have written permission to test. Confirm target, time window, permitted techniques, credentials, and restoration plan in the rules of engagement before execution.
 
-The health response should report <code>"ok": true</code> and
-<code>"ready": true</code>. Degraded readiness returns HTTP 503. Stop the
-background server with `python -m commandcenter.launcher stop`.
+## What's inside
 
-## What THE VOID is
-
-THE VOID is:
-
-- A Linux security-validation platform controlled by an operator.
-- A visual evidence and reporting workspace backed by local data.
-- A CLI execution path with target, mode, and phase authorization gates.
-- A deterministic, network-free demo for client walkthroughs and training.
-- An auditable evidence pipeline built around WarLog and Boneyard.
-- A set of curated validation scenarios, continuity checks, and prevention
-  scoring.
-- MCP-aware, with a bundled scanner integration whose current maturity and
-  limitations are documented.
-
-THE VOID is not:
-
-- A remote, multi-tenant service or hosted control plane.
-- A replacement for written authorization or professional judgment.
-- An autonomous authorization authority.
-- A guarantee of compromise, prevention, or compliance.
-- A repository for customer evidence, credentials, or engagement archives.
-
-The Command Center currently visualizes, investigates, and exports evidence. It
-does **not** launch validation jobs. Active execution remains on the gated CLI
-until a browser runner includes explicit scope review, approval, progress,
-cancellation, and recovery controls.
-
-## Architecture
-
-~~~text
-                         local operator workstation
-
-  approved target + ROE
-           |
-           v
-  thevoid CLI -> scope/mode/phase gates -> Frosty orchestrator -> adapters
-                                                |
-                                                v
-                                      WarLog + Boneyard
-                                                |
-                                                v
-  Browser <--- localhost REST + WebSocket --- Command Center
-                                                |
-                                      reports / local exports
-
-  Explore Demo -> isolated synthetic stores ----^
-~~~
-
-The browser and CLI read the same live local evidence stores. WebSocket pollers
-project new WarLog, engagement, graph, metrics, integrity, and channel events
-into the interface. Completed engagements and recorded channel evidence remain
-visible after a Command Center restart.
-
-Demo Mode swaps the projection layer to an isolated directory below the
-operator's XDG state root. It does not write to the live Boneyard or WarLog,
-and the synthetic stores are rebuilt deterministically whenever Demo Mode is
-enabled.
-
-## Repository map
-
-| Path | Purpose |
+| Component | Role |
 |---|---|
-| <code>cli/</code> | Main <code>thevoid</code> command group and operator output |
-| <code>agent/</code> | Frosty orchestration, phase selection, and injection defenses |
-| <code>orchestrator/</code> | Engagement coordination |
-| <code>core/</code> | Authorization, execution, targets, WarLog, Boneyard, and integrity |
-| <code>recon/</code> | Reconnaissance modules |
-| <code>exploit/</code> | Scope-gated validation modules |
-| <code>modules/</code> | Reporting, export, coverage, continuity, and specialist phases |
-| <code>c2/</code> | Channel abstractions used by authorized validation workflows |
-| <code>llm/</code> | LLM security-validation support |
-| <code>scenarios/</code> | Curated named phase plans |
-| <code>commandcenter/</code> | FastAPI backend, React frontend, scripts, and tests |
-| <code>mcp-tools/mcp-scanner/</code> | Bundled MCP scanner integration scaffold |
-| <code>Frosty/</code> | Agent identity, operating policy, and local settings |
-| <code>snowblind/</code> | Bundled Linux privacy and network-containment toolkit |
-| <code>website/</code> | Optional localhost demonstration site |
-| <code>tests/</code> | Core automated test suite |
-| <code>docs/</code> | Operator documentation |
-| <code>config/examples/</code> | Fictional demo authorization and profile examples |
+| `agent/` | ShadowAgent engagement loop, phase registry, planner (evidence-grounded), Sentinel (dual-LLM ROE review) |
+| `c2/` | C2 daemon, malleable profiles, ECDH handshake, hardened listener, S3/webhook transports |
+| `cli/` | `thevoid` command surface |
+| `commandcenter/` | Browser-first console (FastAPI backend + committed frontend bundle) |
+| `core/` | WarLog (HMAC-chained, Merkle-anchorable evidence store), Boneyard, crypto, authorization |
+| `exploit/` | Exploitation, C2 infrastructure, destruction executor (reversible impact mode) |
+| `implant/` | Staged loader with kill switch and expiry |
+| `llm/` | Local-first provider layer; every call is WarLog-audited |
+| `modules/` | Jailbreak, data theft, coverage/ATLAS mapping, evidence reports |
+| `snowblind/` | Bundled network discovery toolkit |
+| `mcp-tools/` | MCP vulnerability scanner |
+| `Frosty/` | Operator-facing agent identity |
 
-## Requirements
+## Evidence integrity
 
-### Required
+The WarLog is an SQLite-backed evidence store where every row carries an HMAC over its content, and event ranges can be Merkle-anchored:
 
-- Linux. Kali Linux is the primary demo target; other Debian-family systems are
-  suitable for development and testing.
-- Python 3.10 or newer.
-- <code>python3-venv</code> and <code>python3-pip</code>.
-- A modern browser.
+```python
+from core.warlog import WarLog
 
-On a minimal Kali installation:
+wl = WarLog(...)                          # integrity key required
+wl.log("recon complete", module="recon", target="10.0.0.5")
 
-~~~bash
-sudo apt update
-sudo apt install python3 python3-venv python3-pip
-~~~
+anchor = wl.anchor_events(1, wl.max_seq())  # freeze the range
+assert wl.verify_anchor(anchor["anchor_id"])
+assert wl.verify_row(1, anchor_id=anchor["anchor_id"])
+```
 
-### Frontend development only
+Tampering any row breaks the anchor; anchoring any row re-signs it. Publish anchor roots off-host (`mark_anchor_published`) to detect whole-history truncation by an attacker who holds the integrity key.
 
-The committed production bundle does not need Node.js. Rebuilding or developing
-the frontend requires a Node.js version supported by Vite 8:
+## MITRE ATLAS coverage
 
-- Node.js 20.19 or newer in the Node 20 line, or
-- Node.js 22.12 or newer.
+Coverage is computed against the canonical ATLAS-2026.09 dataset (120 base techniques) with mapping validated fail-closed at import time:
 
-### Phase-specific tools
+```python
+from modules.atlas_coverage import coverage_for, map_engagement
 
-Some active phases use external security tools or services. Install only the
-dependencies required by the approved validation plan. A successful Python
-installation does not imply that every optional external adapter is available.
-Missing integrations should be treated as a preflight finding, not bypassed.
+s = coverage_for(["recon", "c2", "mcp_attack"])
+# s["coverage_pct"], s["covered"], s["per_phase"]
+map_engagement(engagement_result, warlog)   # records evidence + content hash
+```
 
-## Installation
-
-### Licensed customer bundle
-
-The supported commercial delivery is one customer-specific archive containing
-the main application package, the Snowblind companion package, and an offline
-signed entitlement:
-
-~~~bash
-tar --extract --zstd --file the-void-<version>-linux-amd64-<token>.tar.zst
-cd the-void-<version>-linux-amd64-<token>
-sudo ./install.sh /path/to/blackfrost-release-signing.pub
-thevoid-command-center start
-~~~
-
-The release key must be downloaded independently and kept outside the extracted
-bundle; the installer refuses any key located inside the bundle as its trust
-anchor. The launcher opens the local browser console. Blackfrost's package
-scripts do not start the application or change firewall/routing policy. Confirm
-the archive SHA-256 and release-key fingerprint against the authenticated
-customer portal first.
-
-### Private source checkout
-
-Create an isolated environment from the repository root:
-
-~~~bash
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install --upgrade pip
-python -m pip install -e '.[dev]'
-~~~
-
-The editable install exposes the CLI and visual launcher entry points:
-
-~~~bash
-thevoid version
-void version
-thevoid-command-center --help
-~~~
-
-Use <code>thevoid</code> in documentation and operator notes for consistency.
-After reopening a terminal, reactivate the environment:
-
-~~~bash
-source .venv/bin/activate
-~~~
-
-For a runtime-only installation, omit the development extra:
-
-~~~bash
-python -m pip install -e .
-~~~
-
-## Private commercial distribution
-
-Source stays in the private repository. Release engineering produces two
-native `.deb` packages, SPDX SBOMs, signed checksums, and a single
-customer-specific `tar.zst`. The application packages are generic and signed
-once; the fulfillment worker adds a separately signed offline entitlement for
-each paid order.
-
-Packaging is not source-code secrecy. Python wheels, Debian packages, and
-frozen executables can be inspected. The security boundary is private source
-access, protected signing keys, least-privilege runtime design, verified
-artifacts, entitlement enforcement, and the commercial agreement.
-
-See [Private Commercial Distribution](docs/DISTRIBUTION.md) for the build,
-signing, verification, upgrade, and recovery runbook. The exact implementation
-contract for the existing store, site, and object storage is in
-[Store, Website, and Object-Storage Handoff](docs/STORE_S3_HANDOFF.md).
-
-## Command Center
-
-### Production mode
-
-~~~bash
-thevoid-command-center start
-thevoid-command-center status
-thevoid-command-center stop
-~~~
-
-Use `thevoid-command-center foreground` when terminal-attached logs are
-preferred. The single process serves the API, WebSocket endpoint, and bundled frontend at
-[http://127.0.0.1:7070](http://127.0.0.1:7070). Interactive API documentation is
-available at [http://127.0.0.1:7070/api/docs](http://127.0.0.1:7070/api/docs).
-
-To select another local port:
-
-~~~bash
-VOID_CC_PORT=7071 python -m commandcenter.launcher start
-~~~
-
-The host setting is intentionally restricted to loopback. Startup rejects
-wildcard and non-local addresses.
-
-### Development mode
-
-~~~bash
-cd commandcenter
-./scripts/dev.sh
-~~~
-
-Development mode serves the Vite frontend at
-[http://127.0.0.1:5173](http://127.0.0.1:5173) and the backend at
-[http://127.0.0.1:7070](http://127.0.0.1:7070).
-
-To rebuild the production bundle:
-
-~~~bash
-cd commandcenter/frontend
-npm ci --no-audit --no-fund
-npm run build
-npm run lint
-~~~
-
-### Views
-
-| View | Operator use |
-|---|---|
-| Operations | Engagement state, event stream, activity, metrics, and MITRE overview |
-| Targets | Recorded host inventory and per-target details |
-| Boneyard | Searchable findings, categories, summaries, and integrity status |
-| Attack Graph | Outcome-aware relationships between hosts, phases, and findings |
-| Timeline | Chronological engagement and phase evidence |
-| C2 Channels | Live injected state when available plus restart-safe recorded evidence |
-| WarLog | Filtered operational events and browser-native JSON download |
-| Reports | Generate and download JSON, Markdown, or HTML reports |
-| Prevention | Coverage score and observed control effectiveness |
-| Compliance | Advisory mapping of observed techniques to security frameworks |
-| Drift | Differences recorded across continuity runs |
-| Settings | Runtime health, signed entitlement, storage counts, setup guidance, and diagnostics |
-
-### Interaction model
-
-- Use the left navigation rail on desktop or the menu button on smaller screens.
-- Press Ctrl+K to navigate, refresh status, export WarLog, or generate a report.
-- Select rows, graph nodes, or techniques to open the detail inspector.
-- Browser back/forward and deep links preserve the selected view.
-- Filters and empty states distinguish absent evidence from loading failures.
-- The **LIVE** badge means the browser WebSocket is connected; it does not mean
-  an engagement is running.
-- **IDLE** and **ENGAGED** describe the current validation state.
-- **DEMO** and **DEMO ON** always identify synthetic evidence.
-- A recorded channel is historical evidence; only an explicitly injected active
-  adapter can supply live channel state.
-
-### Browser boundary
-
-The Command Center enforces a loopback host allowlist, checks origins for
-mutating requests and WebSockets, strips credential-like fields from API
-responses, and sends browser hardening headers including a Content Security
-Policy and frame denial.
-
-Loopback binding is not a substitute for workstation security. Use a controlled
-operator account, lock the demo machine when unattended, and do not run the
-Command Center as root.
-
-See [commandcenter/README.md](commandcenter/README.md) for the API and frontend
-architecture.
-
-## Authorization and rules of engagement
-
-Authorization is mandatory at the CLI scope gate, not an optional client-profile
-setting. Missing documents, implicit consent, empty scope/modes, out-of-scope
-overrides, and invalid/expired windows are denied. The shipped scope example is
-deliberately inactive and is not permission to contact any system. Keep
-customer-specific scope documents outside the
-repository if they contain names, addresses, credentials, or other sensitive
-details.
-
-A fictional structure is provided at
-[config/examples/authorization.demo.json](config/examples/authorization.demo.json).
-An authorization document defines:
-
-- Engagement name and operator.
-- Explicit authorization state.
-- Timezone-aware `not_before` and `expires_at` values; expiration is exclusive.
-- In-scope and out-of-scope targets.
-- Allowed modes.
-- Denied phases.
-- Optional engagement notes.
-
-Always inspect the resolved plan with <code>--dry-run</code>:
-
-~~~bash
-thevoid engage <approved-target> \
-  --profile client \
-  --authz /secure/path/engagement-scope.json \
-  --mode quick \
-  --dry-run
-~~~
-
-Only remove <code>--dry-run</code> after a human confirms:
-
-1. The target resolves to the approved asset.
-2. The current time is inside the approved window.
-3. The selected mode or scenario is allowed.
-4. Denied phases were removed from the plan.
-5. Credentials and test data are approved for use.
-6. Monitoring, escalation, cancellation, and restoration contacts are ready.
-
-Mode and scenario selection never overrides denied-phase filtering or target
-scope. The software guardrails supplement the signed rules of engagement; they
-do not broaden it.
+A full engagement run covers 46 of 120 techniques (38.3%) of the current matrix — gaps are enumerable, not vibes.
 
 ## CLI reference
 
-~~~text
-thevoid [--help] [--version] COMMAND [OPTIONS]
-~~~
-
 | Command | Purpose |
 |---|---|
-| <code>version</code> | Show application, Python, platform, phase, scenario, and Command Center metadata |
-| <code>status</code> | Show recorded evidence totals; separate live runtime state is explicitly unavailable |
-| <code>demo</code> | Run the deterministic narrated demo with zero network activity |
-| <code>recon</code> | Schedule only the reconnaissance phase |
-| <code>engage</code> | Plan or run an authorized mode/scenario against one or more targets |
-| <code>targets</code> | List recorded hosts; old nonpersistent edit flags now return a usage error |
-| <code>scenarios list</code> | List curated phase plans |
-| <code>scenarios show NAME</code> | Inspect one scenario |
-| <code>report</code> | Render current WarLog and Boneyard evidence |
-| <code>continuity start</code> | Run an interval-based authorized validation schedule |
-| <code>continuity drift</code> | Display recorded drift events |
-| <code>license status</code> | Verify the configured offline entitlement without contacting a server |
+| `thevoid demo` | Deterministic narrated demo, zero network activity |
+| `thevoid recon <target>` | Reconnaissance phase (scope-gated) |
+| `thevoid engage <target> --mode <m>` | Run an authorized mode/scenario |
+| `thevoid scenarios list` | Curated phase plans |
+| `thevoid report` | Render WarLog + Boneyard evidence |
+| `thevoid continuity start` | Interval-based authorized validation |
+| `thevoid license status` | Verify offline entitlement |
+
+All execution commands require `--authz` (a rules-of-engagement file) and support `--dry-run` to show the plan without executing.
+
+## Safety properties
+
+- **Fail closed.** Missing authorization, expired entitlement, or out-of-scope target aborts the phase before it touches anything.
+- **Approval gates.** The planner's proposed next steps require explicit operator approval; branch fan-out and wall-clock limits are enforced, not advisory.
+- **Kill switches.** Staged implants carry kill switches and expiry; impact mode is encrypt-prove-restore reversible.
+- **Dual-LLM ROE review.** Sentinel reviews agent actions against the engagement's ROE using two independent model lanes; provenance of every reviewer opinion is tagged and logged.
+
+## Development
+
+```bash
+pip install -e '.[dev]'
+pytest                                  # full suite
+pytest tests/test_warlog_merkle.py      # integrity subsystem
+```
 
-Safe inspection commands:
-
-~~~bash
-thevoid --help
-thevoid version
-thevoid status
-thevoid scenarios list
-thevoid scenarios show baseline-network
-thevoid demo --no-animate
-~~~
-
-Safe planning commands:
-
-~~~bash
-thevoid recon <approved-target> --profile client \
-  --authz /secure/path/engagement-scope.json --dry-run
-
-thevoid engage <approved-target> --profile client \
-  --authz /secure/path/engagement-scope.json --mode quick --dry-run
-~~~
-
-Use <code>--json-output</code> where offered for automation. Run
-<code>thevoid COMMAND --help</code> for the authoritative options of a
-subcommand.
-
-## Modes and scenarios
-
-Modes choose a default ordered phase set. Scenarios replace that default with a
-curated phase plan. Both are filtered by the active profile and authorization
-document.
-
-| Mode | Ordered phases | Operational note |
-|---|---|---|
-| <code>quick</code> | <code>recon</code> | Reconnaissance only; preferred starting point |
-| <code>stealth</code> | <code>recon</code>, <code>exploit</code>, <code>network_bypass</code>, <code>mcp_scan</code> | Active validation; name describes the phase plan, not authorization |
-| <code>full</code> | <code>recon</code>, <code>exploit</code>, <code>data_theft</code>, <code>llm_jailbreak</code>, <code>network_bypass</code>, <code>c2</code>, <code>mcp_scan</code>, <code>mcp_attack</code>, <code>mcp_chain</code> | Broad validation; review every phase |
-| <code>aggressive</code> | Full-style coverage plus cloud, Kubernetes, CVE, advanced LLM, and MCP channel phases | High impact; requires explicit approval and close monitoring |
-| <code>chaos</code> | All registered phases, including destructive and persistence-oriented phases | Highest risk; denied by the demo safeguards and inappropriate unless individually authorized |
-
-The <code>--mode stealth</code> plan and the <code>--stealth</code> transport
-option are separate controls. Review both before execution.
-
-Built-in scenarios:
-
-| Scenario | Purpose | Phases |
-|---|---|---|
-| <code>baseline-network</code> | Standard network validation chain | <code>recon</code>, <code>exploit</code>, <code>data_theft</code>, <code>c2</code> |
-| <code>cloud-hygiene</code> | Cloud configuration, IAM, and container posture | <code>cloud_attack</code>, <code>k8s_attack</code> |
-| <code>crypto-persistence</code> | High-risk asset and persistence controls | <code>crypto_theft</code>, <code>persistent_exfil</code>, <code>zero_click</code> |
-| <code>llm-trust</code> | Adversarial LLM trust validation | <code>llm_jailbreak</code>, <code>advanced_jailbreak</code> |
-| <code>mcp-critical</code> | MCP scan, attack, chaining, and channel coverage | <code>mcp_scan</code>, <code>mcp_attack</code>, <code>mcp_chain</code>, <code>mcp_c2</code> |
-
-Inspect a scenario and dry-run it before use:
-
-~~~bash
-thevoid scenarios show mcp-critical
-thevoid engage <approved-target> --scenario mcp-critical \
-  --profile client --authz /secure/path/engagement-scope.json --dry-run
-~~~
-
-## Evidence, integrity, and reporting
-
-### Local evidence model
-
-- **WarLog** is an append-oriented SQLite event record with HMAC chain-of-custody
-  metadata, spans, traces, rotation, and integrity verification.
-- **Boneyard** is a SQLite evidence store for hosts, findings, attack paths, and
-  outcomes, with secret-managed integrity and encryption of sensitive finding payloads.
-- **Reporter** renders the current stores as JSON, Markdown, or HTML.
-- **Coverage scoring** summarizes observed prevention strength; it is not a
-  certification.
-
-New stores use private per-store keys under the operator's configuration root.
-Existing nonempty stores without those keys require a reviewed migration; they
-are not silently re-keyed. Encryption is field-level, not whole-database:
-relational metadata, titles/tags, other categories, and event logs may remain
-plaintext. Integrity is not immutable storage. Protect the workstation and
-backups with OS access controls and full-disk encryption. See [SECURITY.md](SECURITY.md).
-
-CLI and browser reports share the recorded engagement projection. Invalid or
-oversized projections fail rather than silently producing incomplete totals.
-Failed exports return nonzero; diagnostics go to stderr and JSON stdout stays
-machine-readable. CLI status JSON uses schema `thevoid.status.v1`.
-
-Generate a local report:
-
-~~~bash
-mkdir -p "$HOME/.local/share/blackfrost/the-void/exports"
-thevoid report --format html \
-  --output "$HOME/.local/share/blackfrost/the-void/exports/report.html" \
-  --name "Authorized Validation" --operator "Operator" \
-  --verify-integrity
-~~~
-
-Integrity verification is intentionally opt-in because it is slower on large
-logs. The Command Center can generate the same three report formats and can
-download a WarLog JSON export directly through the browser.
-
-### Explicit external exports
-
-The CLI supports <code>file_jsonlines</code>, <code>syslog</code>, and
-<code>webhook</code> report sinks. These are never implicit. Selecting a network
-sink can move evidence off the workstation and must be approved in the
-engagement data-handling plan.
-
-Webhook credentials come from environment variables, not tracked files:
-
-~~~bash
-export THE_VOID_SIEM_URL='https://approved.example/ingest'
-export THE_VOID_SIEM_TOKEN='retrieve-from-secret-manager'
-thevoid report --format json --export webhook
-~~~
-
-Do not place real values in <code>.env.example</code>, shell history, screenshots,
-support tickets, or committed authorization files.
-
-## Continuity and drift
-
-Continuity repeats an authorized plan and records verdict changes between runs.
-It is a long-running operator process, not an unattended authorization grant.
-Unlike <code>engage</code>, <code>continuity start</code> accepts a settings
-file instead of per-command <code>--profile</code> and <code>--authz</code>
-options. Its secured settings file must enable the client authorization gate and
-reference the approved scope document:
-
-~~~json
-{
-  "CLIENT_MODE": true,
-  "REQUIRE_AUTHORIZATION": true,
-  "STRICT_DIFFICULTY": true,
-  "AUTHORIZATION_FILE": "/secure/path/engagement-scope.json",
-  "DENY_HIGH_RISK_PHASES": true
-}
-~~~
-
-Validate the equivalent one-time plan with <code>engage --dry-run</code> before
-starting the scheduler. Then pass that settings file explicitly:
-
-~~~bash
-thevoid continuity start <approved-target> \
-  --mode quick --interval-hours 24 --max-runs 3 \
-  --config /secure/path/client-continuity.json
-
-thevoid continuity drift --list
-thevoid continuity drift --json-output \
-  --output "$HOME/.local/share/blackfrost/the-void/exports/drift.json"
-~~~
-
-Before starting a scheduler, confirm that the full schedule stays inside the
-approved window and that the authorization file remains valid for every run.
-Stop the process with Ctrl+C when required.
-
-## Bundled components
-
-### Frosty
-
-Frosty is the agent identity used in configuration, status output, demo
-profiles, and operator-facing documentation. Its operating policy and local
-settings live in [Frosty/README.md](Frosty/README.md).
-
-### Snowblind
-
-Snowblind is bundled so the client test does not depend on a second repository
-or download. It keeps its own documentation, license, acceptable-use terms, and
-<code>snowblind</code> CLI (plus the shorter <code>snow</code> alias) under
-<code>snowblind/</code>.
-
-Read [snowblind/README.md](snowblind/README.md) before any privileged operation.
-Begin with the read-only diagnostic and retain independent console access for
-recovery before changing host network policy:
-
-~~~bash
-# Licensed package:
-sudo snowblind doctor
-
-# Private source checkout:
-sudo python3 snowblind/snow.py doctor
-~~~
-
-### MCP scanner
-
-The bundled [MCP scanner](mcp-tools/mcp-scanner/README.md) is wired into Frosty's
-<code>mcp_scan</code> phase. Its availability is reported separately from the
-rest of the phase system so an import failure does not silently become a
-successful scan.
-
-The current scanner engines are an integration scaffold, not a production
-vulnerability authority: several analysis, dependency, drift, correlation, and
-report paths still use deterministic placeholder behavior. Treat their output
-as demonstration evidence until the acceptance items in the scanner guide are
-implemented and independently validated.
-
-### Optional demonstration site
-
-The [local demonstration site](website/README.md) is separate from the Command
-Center and is useful for a controlled localhost presentation:
-
-~~~bash
-cd website
-./serve.sh
-~~~
-
-It binds to [http://127.0.0.1:8088](http://127.0.0.1:8088).
-
-## Verification and CI
-
-Run the Python suites from the repository root:
-
-~~~bash
-python -m pytest tests commandcenter/tests/backend -q
-python -m compileall -q \
-  agent c2 cli commandcenter config core exploit llm modules orchestrator recon scenarios
-~~~
-
-Run the CI-equivalent fatal-error lint:
-
-~~~bash
-ruff check \
-  agent c2 cli commandcenter config core exploit llm modules orchestrator recon scenarios tests \
-  --select E9,F63,F7,F82
-~~~
-
-Verify the frontend:
-
-~~~bash
-cd commandcenter/frontend
-npm ci --no-audit --no-fund
-npm run build
-npm run lint
-~~~
-
-The handoff gate runs the complete Python suite. GitHub Actions also validates:
-
-- Python 3.10 and 3.12 test matrices.
-- Frontend reproducible install, production build, and lint.
-- High and critical dependency vulnerabilities with Trivy.
-- Full-history secret detection with Gitleaks.
-- Fatal Python syntax and name-resolution rules with Ruff.
-
-Live third-party security-tool integrations remain an operator-run acceptance
-step on the intended Kali machine. See [CLIENT_TESTING.md](CLIENT_TESTING.md)
-for the complete acceptance sequence.
-
-## Client demonstration playbook
-
-### Preflight
-
-~~~bash
-source .venv/bin/activate
-thevoid version
-thevoid status
-thevoid demo --no-animate
-git status --short
-thevoid-command-center start --no-open
-~~~
-
-Confirm the health endpoint is green and that no customer-specific runtime data
-is present.
-
-### Suggested browser walkthrough
-
-1. Open the Command Center and select **Explore Demo**.
-2. Use **Operations** to explain engagement state, evidence counts, and live
-   browser connectivity.
-3. Open **Targets** and **Boneyard** to inspect the fictional evidence.
-4. Follow relationships in **Attack Graph** and sequencing in **Timeline**.
-5. Review recorded activity in **C2 Channels** and **WarLog**.
-6. Explain observed control strength in **Prevention** and the advisory nature
-   of **Compliance**.
-7. Use Ctrl+K to demonstrate keyboard navigation and actions.
-8. Generate a report in **Reports** and inspect the downloaded file.
-9. Return the top-bar toggle to **DEMO OFF** and confirm the live workspace is
-   restored.
-
-For a clean presentation, use Demo Mode until the client has approved a real
-scope document. Do not improvise an active target during the walkthrough.
-
-## Runtime data and repository hygiene
-
-Runtime state is local and excluded from Git. Source checkouts and installed
-packages use the same XDG layout by default:
-
-| Path | Contents |
-|---|---|
-| <code>~/.config/blackfrost/the-void/</code> | Per-operator configuration and optional source entitlement |
-| <code>~/.local/state/blackfrost/the-void/boneyard/</code> | Live evidence SQLite database and journals |
-| <code>~/.local/state/blackfrost/the-void/warlog/</code> | Live event database, journals, and rotated archives |
-| <code>~/.local/state/blackfrost/the-void/logs/</code> | Compatibility and Command Center logs |
-| <code>~/.local/state/blackfrost/the-void/quarantine/</code> | Private injection-defense payload quarantine |
-| <code>~/.local/state/blackfrost/the-void/commandcenter/</code> | UI/session state and isolated demo stores |
-| <code>~/.local/share/blackfrost/the-void/exports/</code> | Browser-generated report and WarLog files |
-| <code>~/.local/share/blackfrost/the-void/loot/</code> | Optional explicitly generated phase output |
-| <code>.shadow/sessions/</code>, <code>.shadow/checkpoints/</code> | Local sessions and checkpoints |
-| <code>/var/lib/blackfrost/the-void/snowblind/</code> | Privileged Snowblind journal, backups, and recovery state |
-| <code>Frosty/.shadow/</code> | Frosty local session state |
-| <code>release/out/</code>, <code>release/wheelhouse/</code> | Ignored release outputs and offline dependencies |
-
-Also ignored are environment files other than <code>.env.example</code>, private
-keys and certificates, credential-shaped files, dependency trees, caches,
-build output, local model weights, and private Frosty memory.
-
-Before committing or handing off:
-
-~~~bash
-git status --short
-git diff --check
-git diff --cached --name-only
-~~~
-
-Stage only intentional source and documentation paths. Never force-add ignored
-runtime data. Review every report or support bundle for customer identifiers,
-credentials, tokens, target details, and screenshots before sharing it.
-
-The ignore file is a last line of defense, not a secret-management system. If a
-secret is ever committed, remove it from history and rotate it; deleting the
-working-tree file is not enough.
-
-## Troubleshooting
-
-| Symptom | Check |
-|---|---|
-| <code>thevoid: command not found</code> | Activate <code>.venv</code> and rerun <code>python -m pip install -e '.[dev]'</code> |
-| Import error at startup | Confirm the terminal is at the repository root and the intended virtual environment is active |
-| Port 7070 already in use | Inspect with <code>ss -ltnp \| grep ':7070'</code>, or select another loopback port with <code>VOID_CC_PORT</code> |
-| API-only JSON appears at <code>/</code> | Rebuild <code>commandcenter/frontend/dist</code> with <code>npm ci</code> and <code>npm run build</code> |
-| Browser shows no evidence | This is expected for a clean live store; select **Explore Demo** or run an authorized workflow |
-| Synthetic records are visible | Confirm the top bar says **DEMO ON**, then toggle it off to restore live stores |
-| **LIVE** but engagement is **IDLE** | The WebSocket is connected; no validation is currently running |
-| A channel says recorded rather than active | The UI found persisted evidence but has no live adapter injected in this process |
-| Health lists degraded components | Check the server log, virtual environment, optional adapter dependencies, and local store permissions |
-| License gate blocks startup | Run <code>thevoid license status</code>; install the entitlement issued for this version rather than disabling the commercial wrapper |
-| Desktop launcher exits during startup | Inspect <code>~/.local/state/blackfrost/the-void/logs/command-center.log</code> and run <code>thevoid-command-center foreground</code> |
-| Mutation or WebSocket receives 403 | Open the UI through its documented loopback URL; cross-origin browser requests are rejected |
-| Browser shows stale assets after rebuild | Stop the server, restart it, and perform a hard refresh |
-| Vite reports an unsupported Node engine | Upgrade to Node 20.19+ or 22.12+ |
-| Scope or phase is rejected | Treat the rejection as a guardrail; correct the target or authorization document instead of bypassing it |
-| Integrity verification is slow | This is expected for large evidence stores; run it during preflight or closeout rather than repeatedly |
-| Report is empty | Reports use the currently active live or demo stores; confirm the selected mode and evidence counts |
-
-If privileged Snowblind diagnostics or restoration are involved, use its own
-troubleshooting and recovery guide rather than treating it as a Command Center
-problem.
-
-## Documentation and support handoff
-
-- [Client testing guide](CLIENT_TESTING.md)
 - [Operator guide](docs/OPERATOR_GUIDE.md)
-- [Private distribution guide](docs/DISTRIBUTION.md)
-- [Store/S3 implementation handoff](docs/STORE_S3_HANDOFF.md)
 - [Command Center guide](commandcenter/README.md)
-- [Frosty guide](Frosty/README.md)
 - [Snowblind guide](snowblind/README.md)
 - [MCP scanner guide](mcp-tools/mcp-scanner/README.md)
-- [License](LICENSE)
+- [Security policy](SECURITY.md)
 
-For a useful support report, include:
+## Contributing
 
-- THE VOID, Python, Node.js (if relevant), browser, and OS versions.
-- The sanitized command or browser route.
-- Expected and actual behavior.
-- Sanitized logs and the <code>/api/health</code> response.
-- Whether Demo Mode or live mode was active.
-- Whether the failure reproduces after a clean restart.
+We welcome issues, PRs, and forks. To keep the project's licensing history clean:
 
-Remove credentials, customer identifiers, real targets, and sensitive evidence
-before sending any support material.
+1. Sign off every commit (`git commit -s`) — this project uses DCO sign-off.
+2. Open an issue first for anything non-trivial so we can agree on scope.
+3. No vendor or customer data in fixtures — sanitized, synthetic, fictionalized only.
 
 ## License
 
-THE VOID is proprietary Blackfrost AI software. Bundled components retain the
-license files and usage terms shipped in their respective directories.
+Apache License 2.0. See [LICENSE](LICENSE). Bundled third-party components retain their own license files; check the component directory before redistributing them.

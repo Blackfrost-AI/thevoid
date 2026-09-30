@@ -20,7 +20,7 @@ not require a second clone or download.
 | THE VOID integration | <code>agent/shadow_agent.py</code> |
 | Registered phase | <code>mcp_scan</code> |
 | Network service | None in the supported client path |
-| License | Root THE VOID proprietary license |
+| License | Apache-2.0 (see LICENSE) |
 
 ## Included modules
 
@@ -144,6 +144,6 @@ credentials, generated reports, or customer identifiers.
 
 ## License
 
-This bundled package is governed by the proprietary
-[root license](../../LICENSE). No separate open-source license is granted by
+This bundled package is covered by the Apache-2.0
+[root license](../../LICENSE) of THE VOID. No separate license is granted by
 this directory.

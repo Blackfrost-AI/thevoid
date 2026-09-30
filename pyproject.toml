@@ -1,5 +1,5 @@
 # THE VOID — modern Python project configuration.
-# Private / commercial proprietary. This file centralizes build metadata,
+# Apache-2.0 licensed. This file centralizes build metadata,
 # lint, type-check, and coverage configuration for the core platform.
 #
 # NOTE: Packaging entrypoints remain in setup.py for now (console scripts are
@@ -15,7 +15,7 @@ version = "1.1.0"
 description = "Operator-authorized AI red team — local, auditable, MCP-aware."
 authors = [{ name = "Blackfrost AI" }]
 requires-python = ">=3.10"
-license = { text = "Proprietary" }
+license = { text = "Apache-2.0" }
 # Dependencies are authoritative in setup.py and mirrored in requirements.txt.
 dynamic = ["dependencies"]
 

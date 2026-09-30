@@ -41,5 +41,5 @@ python3 -m http.server 8088 --bind 127.0.0.1
 ## Related
 
 - Operator guide: `../docs/OPERATOR_GUIDE.md`
-- Client testing guide: `../CLIENT_TESTING.md`
+- MCP scanner: `../mcp-tools/mcp-scanner/README.md`
 - Command Center: `../commandcenter/`
