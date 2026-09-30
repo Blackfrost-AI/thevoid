@@ -44,6 +44,19 @@ logger = logging.getLogger("void.warlog")
 
 # ─── Constants ───────────────────────────────────────────────────────────────
 
+# Merkle anchor table (P2 — external anchoring). Append-only; anchors
+# are computed over row_hmac values of event seq ranges.
+_MERKLE_ANCHOR_SCHEMA = """
+CREATE TABLE IF NOT EXISTS merkle_anchors (
+    anchor_id     TEXT    PRIMARY KEY,       -- UUID v4
+    seq_from      INTEGER NOT NULL,          -- first event seq (inclusive)
+    seq_to        INTEGER NOT NULL,          -- last event seq (inclusive)
+    merkle_root   TEXT    NOT NULL,          -- Merkle root over row_hmacs
+    anchor_hmac   TEXT    NOT NULL,          -- HMAC over anchor metadata+root
+    anchor_epoch  REAL    NOT NULL,          -- when the anchor was created
+    published     INTEGER DEFAULT 0          -- 1 once published to stubs
+);
+"""
 _CHAIN_GENESIS = b"GENESIS"
 
 _SCHEMA_PATH = Path(__file__).parent / "warlog_schema.sql"
@@ -352,6 +365,7 @@ class WarLog:
             # Apply schema
             schema_sql = _SCHEMA_PATH.read_text()
             conn.executescript(schema_sql)
+            conn.executescript(_MERKLE_ANCHOR_SCHEMA)
             conn.commit()
         finally:
             conn.close()
@@ -535,6 +549,339 @@ class WarLog:
                 f.write(json.dumps(entry, default=str) + "\n")
         except IOError as e:
             logger.debug(f"JSONL write failed (non-fatal): {e}")
+
+    def _merkle_parent(self, left: str, right: str) -> str:
+        """Ordered Merkle parent: SHA-256 of the hex-concatenated pair."""
+        return hashlib.sha256((left + right).encode("utf-8")).hexdigest()
+
+    @staticmethod
+    def _next_even_pow2(n: int) -> int:
+        """Smallest power of two >= n (n >= 1)."""
+        return 1 << (n - 1).bit_length()
+
+    def _pad_leaves(self, leaves: List[str]) -> List[str]:
+        """Pad leaves once to the next power of two (duplicating the last).
+
+        Canonical tree for roots AND proofs: both must use this padded
+        level so folding a leaf up its sibling path reaches the root.
+        """
+        if not leaves:
+            return []
+        padded = self._next_even_pow2(len(leaves))
+        return leaves + [leaves[-1]] * (padded - len(leaves))
+
+    def _merkle_root(self, leaves: List[str]) -> str:
+        """Merkle root over hex leaves (padded once; Bitcoin-style duplicate)."""
+        level = self._pad_leaves(leaves)
+        if not level:
+            return hashlib.sha256(b"").hexdigest()
+        while len(level) > 1:
+            level = [self._merkle_parent(level[i], level[i + 1])
+                     for i in range(0, len(level), 2)]
+        return level[0]
+
+    def _build_merkle_proof(self, leaves: List[str], index: int) -> List[str]:
+        """Merkle proof (sibling path) for leaf `index`. Empty for single leaf."""
+        if len(leaves) <= 1:
+            return []
+        # Canonicalize to the even power-of-two tree, duplicating the last leaf.
+        padded = len(leaves)
+        size = self._next_even_pow2(padded)
+        level = list(leaves) + [leaves[-1]] * (size - padded)
+        idx = index
+        proof: List[str] = []
+        while len(level) > 1:
+            sibling = idx + 1 if idx % 2 == 0 else idx - 1
+            proof.append(level[sibling])
+            level = [self._merkle_parent(level[i], level[i + 1])
+                     for i in range(0, len(level), 2)]
+            idx //= 2
+        return proof
+
+    def _hmac_sign(self, message: str) -> str:
+        return hmac.new(self._integrity_key(), message.encode("utf-8"),
+                        hashlib.sha256).hexdigest()
+
+    def _hmac_verify(self, message: str, signature: str) -> bool:
+        return hmac.compare_digest(self._hmac_sign(message), signature)
+
+    def anchor_events(self, seq_from: int, seq_to: int) -> Dict[str, Any]:
+        """Merkle-anchor events seq_from..seq_to (inclusive) by row_hmac.
+
+        The anchor covers the row_hmac chain of the events table between
+        the given seq values. Re-reading the same seq range with the same
+        events yields the identical root; any tampered row changes its
+        row_hmac and therefore the root.
+        """
+        conn = self._get_conn()
+        try:
+            rows = conn.execute(
+                "SELECT seq, row_hmac FROM events WHERE seq >= ? AND seq <= ? "
+                "ORDER BY seq ASC", (seq_from, seq_to)).fetchall()
+        finally:
+            conn.close()
+        if not rows:
+            raise ValueError(
+                f"no events in seq range {seq_from}..{seq_to}")
+        leaves = [r["row_hmac"] for r in rows]
+        root = self._merkle_root(leaves)
+
+        anchor_id = str(uuid.uuid4())
+        anchor_epoch = time.time()
+        canonical = f"{anchor_id}:{seq_from}:{seq_to}:{root}"
+        anchor_hmac = self._hmac_sign(canonical)
+
+        conn = self._get_conn()
+        try:
+            conn.execute(
+                "INSERT INTO merkle_anchors (anchor_id, seq_from, seq_to, "
+                "merkle_root, anchor_hmac, anchor_epoch) VALUES (?,?,?,?,?,?)",
+                (anchor_id, seq_from, seq_to, root, anchor_hmac, anchor_epoch))
+            conn.commit()
+        finally:
+            conn.close()
+
+        self.log(f"event merkle anchor {anchor_id}",
+                 level=LogLevel.AGENT, module="core.warlog",
+                 target=f"seq:{seq_from}-{seq_to}",
+                 data={"merkle_root": root, "seq_from": seq_from,
+                       "seq_to": seq_to})
+        return {"anchor_id": anchor_id, "seq_from": seq_from,
+                "seq_to": seq_to, "merkle_root": root,
+                "count": len(leaves)}
+
+    def verify_anchor(self, anchor_id: str) -> bool:
+        """Recompute the anchor's Merkle root and verify its HMAC."""
+        conn = self._get_conn()
+        try:
+            anchor = conn.execute(
+                "SELECT * FROM merkle_anchors WHERE anchor_id = ?",
+                (anchor_id,)).fetchone()
+            if anchor is None:
+                return False
+            rows = conn.execute(
+                "SELECT row_hmac FROM events WHERE seq >= ? AND seq <= ? "
+                "ORDER BY seq ASC",
+                (anchor["seq_from"], anchor["seq_to"])).fetchall()
+        finally:
+            conn.close()
+        if not rows:
+            return False
+        root = self._merkle_root([r["row_hmac"] for r in rows])
+        if anchor["merkle_root"] != root:
+            return False                       # cached root inconsistent
+        canonical = (f"{anchor_id}:{anchor['seq_from']}:{anchor['seq_to']}:"
+                     f"{root}")
+        return self._hmac_verify(canonical, anchor["anchor_hmac"])
+
+    def get_anchors(self) -> List[Dict[str, Any]]:
+        """All anchors (id, range, root, published state), oldest first."""
+        conn = self._get_conn()
+        try:
+            rows = conn.execute(
+                "SELECT anchor_id, seq_from, seq_to, merkle_root, anchor_epoch, "
+                "published FROM merkle_anchors ORDER BY seq_from ASC").fetchall()
+        finally:
+            conn.close()
+        return [dict(r) for r in rows]
+
+    def mark_anchor_published(self, anchor_id: str) -> bool:
+        """Stub: flip the published flag (real posting handled out-of-band)."""
+        conn = self._get_conn()
+        try:
+            cur = conn.execute(
+                "UPDATE merkle_anchors SET published = 1 WHERE anchor_id = ?",
+                (anchor_id,))
+            conn.commit()
+            return cur.rowcount == 1
+        finally:
+            conn.close()
+
+    def get_merkle_proof(self, seq: int,
+                     anchor_id: Optional[str] = None) -> Dict[str, Any]:
+        """Merkle inclusion proof for one event's row_hmac.
+
+        With an anchor_id, the proof is built over the anchor's frozen
+        seq range (and verification detects tampering against the
+        anchor's signed root). Without one, the proof covers the live
+        log (sufficient for chain-consistency, not history detection).
+        """
+        conn = self._get_conn()
+        try:
+            if anchor_id is not None:
+                anchor = conn.execute(
+                    "SELECT * FROM merkle_anchors WHERE anchor_id = ?",
+                    (anchor_id,)).fetchone()
+                if anchor is None:
+                    raise ValueError(f"no anchor {anchor_id}")
+                rows = conn.execute(
+                    "SELECT seq, row_hmac FROM events "
+                    "WHERE seq >= ? AND seq <= ? ORDER BY seq ASC",
+                    (anchor["seq_from"], anchor["seq_to"])).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT seq, row_hmac FROM events ORDER BY seq ASC").fetchall()
+        finally:
+            conn.close()
+        index = next((i for i, r in enumerate(rows) if r["seq"] == seq), -1)
+        if index < 0:
+            raise ValueError(
+                f"no event seq {seq} in {'anchor ' + str(anchor_id) if anchor_id else 'log'}")
+        leaves = [r["row_hmac"] for r in rows]
+        padded_leaves = self._next_even_pow2(len(leaves))
+        padded = leaves + [leaves[-1]] * (padded_leaves - len(leaves))
+        root = self._merkle_root(padded)
+        return {
+            "seq": seq,
+            "index": index,
+            "row_hmac": leaves[index],
+            "total_leaves": len(leaves),
+            "padded_leaves": padded_leaves,
+            "duplicates_last": padded_leaves != len(leaves),
+            "sibling_path": self._build_merkle_proof(leaves, index),
+            "merkle_root": root,
+        }
+
+    def verify_merkle_proof(self, proof: Dict[str, Any],
+                            anchor_id: Optional[str] = None) -> bool:
+        """Verify a leaf's inclusion via its sibling path.
+
+        Folds the claimed row_hmac up through the sibling path and
+        compares the result to the expected root — from the named
+        anchor's verified root if given, else from the live log.
+        A tampered leaf, tampered sibling, stale proof, or a log that
+        has moved on fails.
+        """
+        path = proof.get("sibling_path") or []
+        padded_leaves = int(proof.get("padded_leaves", 0))
+        leaf = str(proof.get("row_hmac", ""))
+        if not leaf:
+            return False
+        if padded_leaves <= 1:                 # single-leaf tree: root == leaf
+            return leaf == self._merkle_root([leaf])
+        if len(path) != padded_leaves.bit_length() - 1:
+            return False                       # malformed proof
+        node = leaf
+        idx = int(proof.get("index", 0))
+        for sibling in path:
+            if idx % 2 == 0:
+                node = self._merkle_parent(node, str(sibling))
+            else:
+                node = self._merkle_parent(str(sibling), node)
+            idx //= 2
+        if node != str(proof.get("merkle_root", "")):
+            return False                       # proof inconsistent with itself
+
+        if anchor_id:                          # pin verification to an anchor
+            conn = self._get_conn()
+            try:
+                anchor = conn.execute(
+                    "SELECT * FROM merkle_anchors WHERE anchor_id = ?",
+                    (anchor_id,)).fetchone()
+                rows = conn.execute(
+                    "SELECT row_hmac FROM events WHERE seq >= ? AND seq <= ? "
+                    "ORDER BY seq ASC",
+                    (anchor["seq_from"], anchor["seq_to"])).fetchall() if anchor else []
+            finally:
+                conn.close()
+            if anchor is None or not rows:
+                return False
+            recomputed = self._merkle_root(
+                [r["row_hmac"] for r in rows])
+            canonical = (f"{anchor_id}:{anchor['seq_from']}:"
+                         f"{anchor['seq_to']}:{recomputed}")
+            if not self._hmac_verify(canonical, anchor["anchor_hmac"]):
+                return False                   # anchor HMAC invalid
+            return node == recomputed          # leaf's root matches anchor
+
+        # No anchor: verify against the live log's current tree.
+        conn = self._get_conn()
+        try:
+            rows = conn.execute(
+                "SELECT seq, row_hmac FROM events ORDER BY seq ASC").fetchall()
+        finally:
+            conn.close()
+        index = int(proof.get("index", -1))
+        seq = int(proof.get("seq", -1))
+        if index < 0 or index >= len(rows) or rows[index]["seq"] != seq:
+            return False                       # log moved: seq/idx mismatch
+        if rows[index]["row_hmac"] != leaf:
+            return False                       # leaf was tampered
+        padded_leaves_live = self._next_even_pow2(len(rows))
+        padded = [r["row_hmac"] for r in rows]
+        padded += [padded[-1]] * (padded_leaves_live - len(padded))
+        return node == self._merkle_root(padded)
+
+    # ─── Row-level verification (P2) ───────────────────────────────────────
+
+    # Fields a row's canonical leaf (row_hmac) is computed over — kept in
+    # sync with _compute_row_hmac()'s exclusion list.
+    _ROW_HMAC_FIELDS = (
+        "message", "module", "target", "level", "data", "timestamp",
+        "data_json",
+    )
+
+    @staticmethod
+    def row_level(row: Dict[str, Any]) -> Dict[str, bool]:
+        """Sensitivity-level classification of an event row's payload.
+
+        Returns booleans per class; callers deciding whether to anchor or
+        replicate a range off-host should treat any True as evidence-grade.
+        """
+        blob = json.dumps(
+            {k: row.get(k) for k in WarLog._ROW_HMAC_FIELDS
+             if row.get(k) is not None},
+            sort_keys=True, default=str).lower()
+        return {
+            "sensitive": any(m in blob for m in
+                             ("api_key", "token", "password", "credential",
+                              "secret", "private_key")),
+            "risky": any(m in blob for m in
+                         ("c2", "exfil", "destruction", "jailbreak",
+                          "data_theft", "mcp_attack")),
+        }
+
+    def max_seq(self) -> int:
+        """Largest event seq in the log (0 if empty).
+
+        Canonical way to pin a range end for anchor_events():
+        wl.anchor_events(1, wl.max_seq()).
+        """
+        conn = self._get_conn()
+        try:
+            row = conn.execute("SELECT MAX(seq) AS seq FROM events").fetchone()
+            return int(row["seq"]) if row and row["seq"] is not None else 0
+        finally:
+            conn.close()
+
+    def verify_row(self, seq: int,
+                   anchor_id: Optional[str] = None) -> bool:
+        """Verify one event's integrity end-to-end.
+
+        Recomputes the row's HMAC over its *current* stored content and
+        requires it to match the stored row_hmac — this catches raw DB
+        tampering of any indexed field (message, data_json, module, ...)
+        even before the Merkle check — then verifies the inclusion proof,
+        pinned to ``anchor_id`` when given. Editing any such field without
+        the integrity key breaks the row; with the key it breaks the
+        anchor HMAC instead.
+        """
+        conn = self._get_conn()
+        try:
+            row = conn.execute(
+                "SELECT * FROM events WHERE seq = ?", (seq,)).fetchone()
+        finally:
+            conn.close()
+        if row is None:
+            return False                           # no such event
+        row = dict(row)
+        if self._compute_row_hmac(row) != row.get("row_hmac"):
+            return False                           # content != stored leaf
+        try:
+            proof = self.get_merkle_proof(seq, anchor_id=anchor_id)
+        except ValueError:
+            return False                           # seq outside anchored range
+        return self.verify_merkle_proof(proof, anchor_id=anchor_id)
 
     # ─── Logging API (backward compatible) ─────────────────────────────────────
 
